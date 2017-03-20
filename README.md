@@ -131,6 +131,7 @@ To set random seed.
 * -R (int): rationing algorithm. 0. proportional, 1. FC low priority, 2. lower has high priority, 3. 1 and 2 (default proportional)
 
 This option can change rationing policy. It is indicated that the original rationing algorithm has a problem to simulate an actual network [Inoue and Todo, 2017].
+
 	1. proportional: The original rationing policy. [Hallegatte, 2008; Henriet and Hallegatte, 2008]
 	2. FC low priority: Final consumption is fulfilled last. (FC has low priority)
 	3. lower has high priority: The improved rationing policy. [Inoue and Todo, 2017]
@@ -159,7 +160,7 @@ Total value added at each step is output.
 
 A value added is caluculated for each firm. The equation is (output)-(input). Minus value addded is acceptable.
 
-
+# Example
 
 To simulate the model in [Inoue and Todo, 2017], the following is the example of usage.
 
