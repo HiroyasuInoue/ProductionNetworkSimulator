@@ -7,7 +7,7 @@ This code can simulate how shocks on firms are propagted through a supply chain 
 
 # 1. How to start using this?
 
-Most readers who use this model is probably not familiar with compile or gitHub. If you are windows 64bit user, please follow the steps below. If not, you need to complie the source files.
+Most readers who use this model are probably not familiar with compile or gitHub. If you are windows 64bit user, please follow the steps below. If not, you need to complie the source files yourself.
 
 For windows 64bit user:
 1. Find and click "release" link on this page. Or click this. https://github.com/HiroyasuInoue/ProductionNetworkSimulator/releases
