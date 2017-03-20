@@ -160,7 +160,7 @@ Total value added at each step is output.
 
 A value added is caluculated for each firm. The equation is (output)-(input). Minus value addded is acceptable.
 
-# Example
+# 3. Example
 
 To simulate the model in [Inoue and Todo, 2017], the following is the example of usage.
 
