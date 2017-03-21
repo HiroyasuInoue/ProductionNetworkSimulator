@@ -5,7 +5,7 @@ This code can simulate how shocks on firms are propagted through a supply chain 
 * [Henriet and Hallegatte, 2008] Henriet, F. and Hallegatte, S. (2008). Assessing the consequences of natural disasters on production networks: a disaggregated approach.
 * [Inoue and Todo, 2017] Inoue, H. and Todo, Y. (2017) Propagation of Negative Shocks Through Firm Networks: Evidence from Simulation on Comprehensive Supply-Chain Data. Available at SSRN: https://ssrn.com/abstract=2932559
 
-# 1. How to start using this?
+# 1. How can I use this?
 
 Most readers who use this model are probably not familiar with compile or gitHub. If you are windows 64bit user, please follow the steps below. If not, you need to complie the source files yourself.
 
