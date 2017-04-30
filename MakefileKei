@@ -1,0 +1,22 @@
+CC = FCCpx
+#CC = x86_64-w64-mingw32-g++
+TGT = $(SRC:%.cpp=%)
+CXX_DEBUG_FLAGS = -DKEI -std=c++11 -g 
+CXX_RELEASE_FLAGS = -DKEI -std=c++11 -Kfast,parallel
+
+all: clean release
+
+release: proNet.exe
+
+proNet.exe: proNet.cpp
+#	$(CC) -std=c++11 $(CXX_RELEASE_FLAGS) -static -o proNet.exe proNet.cpp
+#	$(CC) -std=c++11 $(CXX_RELEASE_FLAGS) -o proNet.exe proNet.cpp
+	$(CC) $(CXX_RELEASE_FLAGS) -o proNet.exe proNet.cpp
+
+debug: proNet.exe
+#	$(CC) -std=c++11 $(CXX_DEBUG_FLAGS) -o proNet.exe proNet.cpp
+	$(CC) $(CXX_DEBUG_FLAGS) -o proNet.exe proNet.cpp
+
+clean:
+	rm -f proNet.exe
+
