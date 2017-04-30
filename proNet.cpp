@@ -1,9 +1,9 @@
+#include <err.h>
 #include <stdlib.h>
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <string>
-#include <regex>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +14,10 @@
 #include <math.h>
 #include <algorithm>
 #include <cmath>
+
+//#ifndef KEI
+//#include <regex>
+//#endif
 
 using namespace std;
 
@@ -100,8 +104,8 @@ int iOrderTypeFrag=0;
 // supplier -> client volume
 // forward: client -> supplier volume
 // backward: supplier -> client volume
-unordered_map<int, unordered_map<int, double>> fATableHoH;
-unordered_map<int, unordered_map<int, double>> bATableHoH;
+unordered_map<int, unordered_map<int, double> > fATableHoH;
+unordered_map<int, unordered_map<int, double> > bATableHoH;
 
 // C vector 
 unordered_map<int, double> cVectorH;
@@ -124,19 +128,19 @@ unordered_map<int, int> firmH;
 
 // order between firm client -order-> supplier
 // this tells the total input of client
-unordered_map<int, unordered_map<int, double>> fOFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > fOFirmFirmHoH;
 
 // adjusted order between firm client -order-> supplier
-unordered_map<int, unordered_map<int, double>> fOAdjustedFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > fOAdjustedFirmFirmHoH;
 
 // backward order between firm supplier <-order- client
-unordered_map<int, unordered_map<int, double>> bOFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > bOFirmFirmHoH;
 
 // backward order between firm supplier <-order- client at start
-unordered_map<int, unordered_map<int, double>> bOStartFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > bOStartFirmFirmHoH;
 
 // backward adjusted order between firm supplier <-order- client
-unordered_map<int, unordered_map<int, double>> bOAdjustedFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > bOAdjustedFirmFirmHoH;
 
 // demand on firm
 unordered_map<int, double> DFirmVectorH;
@@ -151,19 +155,19 @@ unordered_map<int, double> cAdjustedVectorH;
 unordered_map<int, double> piniCapVectorH;
 
 // S on firm for firm (client <-- supplier)
-unordered_map<int, unordered_map<int, double>> SFirmFirmHoH;
+unordered_map<int, unordered_map<int, double> > SFirmFirmHoH;
 
 // S on firm for sector (total)
-unordered_map<int, unordered_map<int, double>> SFirmSectorHoH;
+unordered_map<int, unordered_map<int, double> > SFirmSectorHoH;
 
 // A on firm for sector (total)
-unordered_map<int, unordered_map<int, double>> AFirmSectorHoH;
+unordered_map<int, unordered_map<int, double> > AFirmSectorHoH;
 
 // Pprop on firm for sector
 // PsProp
 // Ratio based inventor for each sector(product)
 // (However, here we use the ratio multiplied by Pini
-unordered_map<int, unordered_map<int, double>> PpropFirmSectorHoH;
+unordered_map<int, unordered_map<int, double> > PpropFirmSectorHoH;
 
 // Pini Max vector
 // (not ratio, ammount)
@@ -221,7 +225,8 @@ string sPrintSnapFileBase="";
 #define Pi 3.141592653589793238462643 
 #endif 
 
-#ifdef INTLC
+//#if defined(INTLC) || defined(KEI)
+#if defined(INTLC)
 inline bool isEqual(double x, double y)
 {
   const double epsilon = 1e-5 /* some small number such as 1e-5 */;
@@ -334,7 +339,7 @@ void printVector1LayerString(char const *name, vector<string> *sv){
 
 }
 
-void printHash2LayerIntIntDouble(char const *name, unordered_map<int, unordered_map<int, double>> *hash){
+void printHash2LayerIntIntDouble(char const *name, unordered_map<int, unordered_map<int, double> > *hash){
 
   cout << name << " is" << endl;
 
@@ -506,7 +511,7 @@ void initializeModel(void){
       // does client exists in hash?
 
       // forward creating hash
-      unordered_map<int, unordered_map<int, double>>::iterator findI;
+      unordered_map<int, unordered_map<int, double> >::iterator findI;
       findI = SFirmFirmHoH.find(itr->first);
 
       if(findI == SFirmFirmHoH.end()){
@@ -538,7 +543,7 @@ void initializeModel(void){
       piniInputVectorH[itr->first]=piniInputVectorH[itr->first]+itr2->second;
 
       // backward creating hash
-      unordered_map<int, unordered_map<int, double>>::iterator findI2;
+      unordered_map<int, unordered_map<int, double> >::iterator findI2;
       findI2 = bOFirmFirmHoH.find(itr2->first);
 
       if(findI2 == bOFirmFirmHoH.end()){
@@ -707,7 +712,7 @@ void initializeModel(void){
   // create A total (i,s) (Fixed)
   // create S total (i,s)
 
-  unordered_map<int, unordered_map<int, double>> *hash;
+  unordered_map<int, unordered_map<int, double> > *hash;
 
   hash=&fATableHoH;
 
@@ -716,7 +721,7 @@ void initializeModel(void){
     // itr->first is i
     int i=itr->first;
 
-    unordered_map<int, unordered_map<int,double>>::iterator findI;
+    unordered_map<int, unordered_map<int,double> >::iterator findI;
     findI = AFirmSectorHoH.find(i);
 
     if(findI == AFirmSectorHoH.end()){
@@ -1400,7 +1405,7 @@ void simulation(){
     //    cerr << "inv renewal" << endl;
 
     // original paper uses j,i but here uses i,j
-    unordered_map<int, unordered_map<int, double>> *hash;
+    unordered_map<int, unordered_map<int, double> > *hash;
 
     hash=&SFirmFirmHoH;
 
@@ -2156,7 +2161,7 @@ void simulation(){
 // 	    exit(1);
 // 	  }
 
-	  int minI; 
+//	  int minI; 
 	  double minD=-1;
 
 	  for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
@@ -2173,11 +2178,11 @@ void simulation(){
 	      // it is 0
 	    }else if(minD<0){
 
-	      minI=itrb->first;
+	      //	      minI=itrb->first;
 	      minD=itrb->second;
 		
 	    }else if(minD>itrb->second){
-	      minI=itrb->first;
+	      //	      minI=itrb->first;
 	      minD=itrb->second;
 	    }
           }
@@ -2196,7 +2201,7 @@ void simulation(){
 
 	    }
 
-	    minI=-1;
+	    //	    minI=-1;
 	    minD=ratFC;
 
 	  }
@@ -2305,7 +2310,7 @@ void simulation(){
 	//	printHash1LayerIntDouble("bAdjustH", &bAdjustH);
 
 	// debug
-	double realizeVolume=0;
+	//	double realizeVolume=0;
 
 	// activate fulfilled ratio
 
@@ -2410,7 +2415,7 @@ void simulation(){
 // 	       cerr << "i " << i << endl;
 // 	     }
 
-	    int minI; 
+//	    int minI; 
 	    double minD=-1;
 
 	    //debug
@@ -2430,11 +2435,11 @@ void simulation(){
 		// it is 0
 	      }else if(minD<0){
 
-		minI=itrb->first;
+		//		minI=itrb->first;
 		minD=itrb->second;
 		
 	      }else if(minD>itrb->second){
-		minI=itrb->first;
+		//	minI=itrb->first;
 		minD=itrb->second;
 	      }
 	    }
@@ -2597,7 +2602,7 @@ void simulation(){
       // found
       string sFile=sPrintSnapFileBase;
 
-#ifdef INTLC
+#if defined(INTLC) || defined(KEI)
       char buf[256];
       sprintf(buf, "%d", t);
       sFile=sFile+buf;
@@ -2935,7 +2940,7 @@ int main(int argc, char *argv[]){
     }
 
     // does source exists in hash?
-    unordered_map<int, unordered_map<int, double>>::iterator findI;
+    unordered_map<int, unordered_map<int, double> >::iterator findI;
 
     findI = fATableHoH.find (atoi(result[1].c_str()));
     if(findI == fATableHoH.end()){
