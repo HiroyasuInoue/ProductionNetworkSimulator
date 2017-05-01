@@ -1,4 +1,3 @@
-#include <err.h>
 #include <stdlib.h>
 #include <iostream>
 #include <sstream>
@@ -10,10 +9,13 @@
 #include <time.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <unistd.h>  // usleep()
+#include <unistd.h>
 #include <math.h>
 #include <algorithm>
 #include <cmath>
+#include <random>
+
+//#include <err.h>
 
 //#ifndef KEI
 //#include <regex>
@@ -202,6 +204,9 @@ unordered_map<int, vector<int> > adaptHoL;
 // inventory size(day)
 double inventoryN=15;
 
+// inventory distribution type
+int iInvDistType=0;
+
 // adjustment ratio for inventory
 double tau=6;
 
@@ -382,6 +387,7 @@ static void usage(char *argv){
   fprintf(stderr,"  -a (int): adaptation (currently, 0: infty, 1: only once)\n");
   fprintf(stderr,"  -A (str): adaptation counter file iff -a is on\n");
   fprintf(stderr,"  -d (str): delta file (default null)\n");
+  fprintf(stderr,"  -D (int): distribution of initial inventory (0: uniform, 1: Poisson) (default 0: uniform)\n");
   fprintf(stderr,"  -f (str): final consumption output file (default null)\n");
   fprintf(stderr,"  -F : fulldebug\n");
   fprintf(stderr,"  -o (int): order algorithm type. 0: normal, 1: keep initial demand, 2: ignore negative inv adjustment\n");
@@ -501,12 +507,43 @@ void initializeModel(void){
   // bOFirmFirmHoH
   // bOAdjustedFirmFirmHoH
 
+
+  // create poisson dist
+  std::default_random_engine generator;
+  std::poisson_distribution<int> distribution(inventoryN);
+
   // using fAtable
   for(auto itr = fATableHoH.begin(); itr != fATableHoH.end(); ++itr) {
-    // row direction: client
+    
+    // for each client
+    
+    // itr->first: client
+    // itr->second: suppliers
+    // suppliers <- order -- client
+
+    // decide inventory coefficient
+    // initial inventory size
+    int initialInventoryCoefficient;
+
+    if(iInvDistType==0){
+      // uniform
+      initialInventoryCoefficient=inventoryN;
+    }else if(iInvDistType==1){
+      // poisson
+
+      initialInventoryCoefficient=distribution(generator);
+
+    }else{
+      cerr << "Invalid option of -D" << endl;
+    exit(1);
+    }
+
+    // debug
+    //cout << "initialInventoryCoefficient " << initialInventoryCoefficient << endl;
+    
     for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
       
-      // column direction: supplier
+      // for each supplier
 
       // does client exists in hash?
 
@@ -535,7 +572,7 @@ void initializeModel(void){
 	//     cout << "found" << endl;
       }
 
-      (SFirmFirmHoH[itr->first])[itr2->first]=itr2->second * inventoryN;
+      (SFirmFirmHoH[itr->first])[itr2->first]=itr2->second * initialInventoryCoefficient;
       (fOFirmFirmHoH[itr->first])[itr2->first]=itr2->second;
       (fOAdjustedFirmFirmHoH[itr->first])[itr2->first]=itr2->second;
 
@@ -710,22 +747,27 @@ void initializeModel(void){
   }
 
   // create A total (i,s) (Fixed)
-  // create S total (i,s)
+  // A is used for target inventory size
 
+  // create S total (i,s)
   unordered_map<int, unordered_map<int, double> > *hash;
 
   hash=&fATableHoH;
 
   for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
 
-    // itr->first is i
+    // itr->first is i (order maker)
     int i=itr->first;
+
+    // itr->second is order receiver's H
+    // order receivers'H <- order -- i
 
     unordered_map<int, unordered_map<int,double> >::iterator findI;
     findI = AFirmSectorHoH.find(i);
 
     if(findI == AFirmSectorHoH.end()){
       // not found
+      // first time for firm i
 
       // debug
       //      cout << "not found" <<endl;
@@ -742,6 +784,7 @@ void initializeModel(void){
       //     cout << "found" << endl;
     }
 
+    // check j <- i order
     for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
 
       // itr2->first is j
@@ -774,7 +817,8 @@ void initializeModel(void){
 
       (AFirmSectorHoH[i])[sj]=(AFirmSectorHoH[i])[sj]+a;
 
-      (SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+inventoryN*a;
+      //old      (SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+inventoryN*a;
+      (SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+(fATableHoH[i])[j];
 
     }
   }
@@ -2683,7 +2727,7 @@ int main(int argc, char *argv[]){
   // minimum input files
   int argNum=5; 
 
-  while ((ch = getopt(argc, argv, "r:t:d:f:s:o:p:a:FR:v:A:")) != -1){
+  while ((ch = getopt(argc, argv, "r:t:d:D:f:s:o:p:a:FR:v:A:")) != -1){
     switch (ch){
     case 'r':
       randSeed=atoi(optarg);
@@ -2693,6 +2737,9 @@ int main(int argc, char *argv[]){
       break;
     case 'd':
       deltaFile=optarg;
+      break;
+    case 'D':
+      iInvDistType=atoi(optarg);
       break;
     case 'f':
       finalConsumeOutputFile=optarg;
