@@ -1,4 +1,4 @@
-#include <stdlib.h>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -6,411 +6,373 @@
 #include <map>
 #include <unordered_map>
 #include <vector>
-#include <time.h>
-#include <pthread.h>
-#include <stdio.h>
+#include <ctime>
+#include <cstdio>
 #include <unistd.h>
-#include <math.h>
-#include <algorithm>
 #include <cmath>
+#include <algorithm>
+#include <stdexcept>
+#include <iomanip>
 #include <random>
-
-//#include <err.h>
-
-//#ifndef KEI
-//#include <regex>
-//#endif
+#include <chrono>
+#include <boost/container/flat_map.hpp>
+#include <omp.h>
+#include <chrono>
 
 using namespace std;
 
-// output file stream
-// Pactual 
-ofstream ofs;
+void sim_predefinedDelta(int t);
 
-// pvalue
-ofstream pvfs;
-
-// global variable
-// defauld 10 step
-int simulationStep=10;
-
-// in files
-
-// io line (firm base)
-string ioLineFile;
-
-// c vector (firm base)
-string cVectorFile;
-
-// pini vector (firm base)
-string piniVectorFile;
-
-// optional
-// delta vector
-// i delta
-// (0 if there is no input)
-string deltaFile="";
-
-// out files
-
-// Pactual file name
-string pactOutputFile;
-
-// value added file name
-string pValueAddedOutputFile;
-
-// Final consumer file name
-// and file stream
-string finalConsumeOutputFile="";
-ofstream  fcOfs;
-
-// Stats file name
-// and file stream
-string statsOutputFile="";
-ofstream  stOfs;
-
-// Adaptation file name
-// and file stream
-string adaptationOutputFile="";
-ofstream  adapOfs;
-
-// debug
-// iniとactの比
-// string  piniPactRatioFile="piniPactRatio.txt";
-// ofstream  piniPactRatioFS;
-
-// debug
-// damage amount
-// string  damagedFirmFile="damagedFirm.txt";
-// ofstream  damageFS;
-// int damagedNum;
+// predefined table
+class Predefined{
+public:
+  int start;
+  int end;
+  double delta;
+  Predefined(int s, int e, double d){start=s;end=e;delta=d;}
+  int GetS(){return start;}
+  int GetE(){return end;}
+  double GetD(){return delta;}
+};
+unordered_map<int, std::vector<Predefined>> predefinedHoL;
 
 // debug
 // full debug option (output for step by step)
 // t, i, pini, delta, pcap, d, pmax, pact, d*, s_j,...
-int iFullDebugFrag=0;
-string  fullDebugFile="fullDebug.csv";
-ofstream  debugFS;
+int iFullDebugFlag = 0;
 
-// rationing algorithm switch
-int iRationingTypeFrag=0;
+// mute flag
+int iMuteFlag = 0;
 
-// order algorithm switch
-int iOrderTypeFrag=0;
+// pact suppredd flag
+int iPActSupFlag = 0;
 
 // internal structure
 
-// A table 
+// A table
 // direction is the same as Hallegatte's paper
 // it means the direction is the opposite to IOtables
 // supplier -> client volume
 // forward: client -> supplier volume
 // backward: supplier -> client volume
-unordered_map<int, unordered_map<int, double> > fATableHoH;
-unordered_map<int, unordered_map<int, double> > bATableHoH;
+size_t NUM_NODES = 0;
+std::vector<boost::container::flat_map<int, double>> fATableHoH;
 
-// C vector 
-unordered_map<int, double> cVectorH;
+// C vector
+std::vector<double> cVectorH;
 
 // Pini vector
 // total amount output at initial
-unordered_map<int, double> piniVectorH;
+std::vector<double> piniVectorH;
 
 // input amount
-unordered_map<int, double> piniInputVectorH;
+std::vector<double> piniInputVectorH;
 
 // valueAdded ratio
-unordered_map<int, double> valueAddedVectorH;
+std::vector<double> valueAddedVectorH;
 
 // firm affi hash
-unordered_map<int, int> firmAffiH;
+std::vector<int> firmAffiH;
 
 // firm name hash
-unordered_map<int, int> firmH;
+std::vector<int> firmH;
 
 // order between firm client -order-> supplier
 // this tells the total input of client
-unordered_map<int, unordered_map<int, double> > fOFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > fOFirmFirmHoH;
 
 // adjusted order between firm client -order-> supplier
-unordered_map<int, unordered_map<int, double> > fOAdjustedFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > fOAdjustedFirmFirmHoH;
 
 // backward order between firm supplier <-order- client
-unordered_map<int, unordered_map<int, double> > bOFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > bOFirmFirmHoH;
 
 // backward order between firm supplier <-order- client at start
-unordered_map<int, unordered_map<int, double> > bOStartFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > bOIniFirmFirmHoH;
 
 // backward adjusted order between firm supplier <-order- client
-unordered_map<int, unordered_map<int, double> > bOAdjustedFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > bOAdjustedFirmFirmHoH;
 
 // demand on firm
-unordered_map<int, double> DFirmVectorH;
+std::vector<double> DFirmVectorH;
+
+// demand on firm (previous)
+std::vector<double> preDFirmVectorH;
 
 // adjusted demand on firm
-unordered_map<int, double> DAdjustedFirmVectorH;
+std::vector<double> DAdjustedFirmVectorH;
 
 // adjusted c on firm
-unordered_map<int, double> cAdjustedVectorH;
+std::vector<double> cAdjustedVectorH;
 
 // Pini Cap vector
-unordered_map<int, double> piniCapVectorH;
+std::vector<double> piniCapVectorH;
 
 // S on firm for firm (client <-- supplier)
-unordered_map<int, unordered_map<int, double> > SFirmFirmHoH;
+std::vector<boost::container::flat_map<int, double> > SFirmFirmHoH;
 
 // S on firm for sector (total)
-unordered_map<int, unordered_map<int, double> > SFirmSectorHoH;
+std::vector<boost::container::flat_map<int, double> > SFirmSectorHoH;
 
 // A on firm for sector (total)
-unordered_map<int, unordered_map<int, double> > AFirmSectorHoH;
+std::vector<boost::container::flat_map<int, double> > AFirmSectorHoH;
 
 // Pprop on firm for sector
 // PsProp
-// Ratio based inventor for each sector(product)
-// (However, here we use the ratio multiplied by Pini
-unordered_map<int, unordered_map<int, double> > PpropFirmSectorHoH;
+// How much can produce if we consider only the inventory of the sector
+// (sfirm)/(afirm)*pini
+std::vector<boost::container::flat_map<int, double> > PpropFirmSectorHoH;
 
 // Pini Max vector
 // (not ratio, ammount)
-unordered_map<int, double> PiniMaxVectorH;
+std::vector<double> PiniMaxVectorH;
+
+// Pprop (but amount) (inventory based minimum amount of production)
+std::vector<double> MinPropAmountVectorH;
 
 // Pactual vector
-unordered_map<int, double> PactualVectorH;
+std::vector<double> PactualVectorH;
 
 // Damage vector 0<=delta<=1
-unordered_map<int, double> DeltaVectorH;
+std::vector<double> DeltaVectorH;
 
-// file stream
-ifstream ifsDelta;
+// Damage reserve vector
+std::vector<double> DeltaReserveVectorH;
+// Damage Start vector 0<=day
+std::vector<int> DeltaStartVectorH;
 
-// data for Adaptation
-
-// adaptation type
-int iAdapType=-1;
-
-// adapatation max counter
-unordered_map<int, int> iAdaptH;
-
-// adapatation done counter
-unordered_map<int, int> iAdaptDoneH;
 
 // secFirmHoL
 unordered_map<int, vector<int> > secFirmHoL;
 
-// link that have taken adaptation
-unordered_map<int, vector<int> > adaptHoL;
-
 // inventory size(day)
-double inventoryN=15;
+// each firm has its own target inventory size that has poisson dist.
+// lambda is inventoryN
+int inventoryN = 15;
 
 // inventory distribution type
-int iInvDistType=0;
+int iInvDistType = 0;
+
+// minimal inventory
+int iInventoryMin = 2;
+
+// target inventory vector (day based)
+std::vector<double> tgtInvVectorH;
+
+// rationing algorithm switch
+int iRationingTypeFlag = 0;
+
+// order algorithm switch
+int iOrderTypeFlag = 0;
+
 
 // adjustment ratio for inventory
-double tau=6;
+double tau = 6;
+
+// recovery day
+int iRecoveryDay = 0;
+
+// recovery type
+int iRecoveryType = -1;
+
+
+// forcibly stop day
+int iForceStopDay = 0;
 
 // for output stats
 double lastTotalPactual;
 double lastTotalValueAdded;
 
 // get snapshot pact option
-int iPrintSnapFrag=0;
+int iPrintSnapFlag = 0;
+
+// recovery step
+std::vector<double> recoveryStepH;
+
+// hidden delta
+std::vector<double> hiddenDeltaVectorH;
 
 // snapshot step
-unordered_map<int,int> hPrintSnapStep;
+unordered_map<int, int> hPrintSnapStep;
 string sPrintSnapStep;
 
 // snapshot file
-string sPrintSnapFileBase="";
+string sPrintSnapFileBase = "";
+
+typedef std::unordered_map<std::string, int> firm_index_t;
+
+typedef std::unordered_map<int, std::string> rev_firm_index_t;
+rev_firm_index_t rev_firm_index;
+
+// selective output flag
+int iSelectiveOutput = 0;
+string sSelectiveOutput;
+vector<map<int, int> > selectiveOutputLoH;
+
+// Daily CVector
+int iDailyCVector = 0;
+string sDailyCVectorFile;
+string sDailyCVectorFileBase;
+std::unordered_map<int, int> dailyCVectorDayH;
+std::vector<double> cVectorOrgH;
+
+// delta flag
+int iDeltaFile=0;
+
+// predefined delta flag
+int iPredefinedDeltaFile=0;
 
 // functions
 
-#ifndef Pi 
-#define Pi 3.141592653589793238462643 
-#endif 
-
-//#if defined(INTLC) || defined(KEI)
-#if defined(INTLC)
-inline bool isEqual(double x, double y)
-{
-  const double epsilon = 1e-5 /* some small number such as 1e-5 */;
-  return std::abs(x - y) <= epsilon * std::abs(x);
-  // see Knuth section 4.2.2 pages 217-218
-}
-
-#else
-
-template<class T>
-typename std::enable_if<!std::numeric_limits<T>::is_integer, bool>::type
-    almost_equal(T x, T y, int ulp)
-{
-    // the machine epsilon has to be scaled to the magnitude of the values used
-    // and multiplied by the desired precision in ULPs (units in the last place)
-    return std::abs(x-y) < std::numeric_limits<T>::epsilon() * std::abs(x+y) * ulp
-    // unless the result is subnormal
-           || std::abs(x-y) < std::numeric_limits<T>::min();
-}
-
+#ifndef Pi
+#define Pi 3.141592653589793238462643
 #endif
 
-double cnd_manual(double x)
-{
-  double L, K, w ;
-  /* constants */
-  double const a1 = 0.31938153, a2 = -0.356563782, a3 = 1.781477937;
-  double const a4 = -1.821255978, a5 = 1.330274429;
-
-  L = fabs(x);
-  K = 1.0 / (1.0 + 0.2316419 * L);
-  w = 1.0 - 1.0 / sqrt(2 * Pi) * exp(-L *L / 2) * (a1 * K + a2 * K *K + a3 * pow(K,3) + a4 * pow(K,4) + a5 * pow(K,5));
-
-  if (x < 0 ){
-    w= 1.0 - w;
+void muteSwitchedCerr(const std::string s) {
+  if (!iMuteFlag) {
+    std::cerr << s;
   }
-  return w;
 }
 
-double adapProbFunc(double x){
-
-  double ret;
-
-  // standart sigmoid
-
-  // debug
-//   cerr << "x: " << x << endl;
-//   cerr << "exp(-(x-0.5)) " << exp(-(x-0.5)) << endl;
-//   cerr << "(1.0+exp(-(x-0.5)) " << (1.0+exp(-(x-0.5))) << endl;
-//   cerr << "(1.0/(1.0+exp(-(x-0.5))) " << (1.0/(1.0+exp(-(x-0.5)))) << endl;
-
-//   ret=1.0-(1.0/(1.0+exp(-(x-0.5))));
-
-//   // debug
-//   cerr << "ret: " << ret << endl;
-
-  // normal cumulative gaussiun
-  
-  // linear
-  // ret=x;
-
-  // square
-  ret=pow(x, 2.0);
-
-  // debug
-  //   cerr << "x: " << x << endl;
-  //   cerr << "exp(-(x-0.5)) " << exp(-(x-0.5)) << endl;
-  //   cerr << "(1.0+exp(-(x-0.5)) " << (1.0+exp(-(x-0.5))) << endl;
-  //   cerr << "(1.0/(1.0+exp(-(x-0.5))) " << (1.0/(1.0+exp(-(x-0.5)))) << endl;
-
-  // alpha
-  // double alpha=10;
-
-  //  ret=(1.0/(1.0+exp(-alpha*(x-0.5))));
-
-  return ret;
+template<class F>
+void MeasureElapsed(std::string tag, F f) {
+  auto start = std::chrono::system_clock::now();
+  f();
+  auto end = std::chrono::system_clock::now();
+  auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  std::stringstream msg;
+  msg << "elapsed time for " << tag << ": " << dt / 1000.0 << std::endl;
+  muteSwitchedCerr(msg.str());
 }
 
-void printHash1LayerIntDouble(char const *name, unordered_map<int, double> *hash){
+const double epsilon = 1e-20 /* some small number such as 1e-5 */;
 
-  cout << name << " is" << endl;
-  map<int, double> sortedVectorH(hash->begin(), hash->end());
-  for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-    // show keys values
-    cout << "key:" << itr->first << " val:" << itr->second << endl;
-  }
-
+inline bool almost_equal(double x, double y) {
+  return std::abs(x - y) <= epsilon;
 }
 
-void printHash1LayerIntInt(char const *name, unordered_map<int, int> *hash){
+void printSnapshot(int t) {
 
-  cout << name << " is" << endl;
-  map<int, int> sortedVectorH(hash->begin(), hash->end());
-  for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-    // show keys values
-    cout << "key:" << itr->first << " val:" << itr->second << endl;
-  }
+  if (hPrintSnapStep.find(t) != hPrintSnapStep.end()) {
+    std::ostringstream oss;
+    oss << sPrintSnapFileBase << t;
+    std::ofstream snapOfs(oss.str());
 
-}
+    if (!snapOfs) {
+      cerr << "Unable to open " << oss.str() << " as snap output file at step " << t << endl;
+      exit(1);
+    }
 
-void printVector1LayerString(char const *name, vector<string> *sv){
+    map<int, double> sortedVectorH;
+    for (size_t i = 0; i < PactualVectorH.size(); i++) {
+      sortedVectorH[i] = PactualVectorH[i];
+    }
 
-  cout << name << " is" << endl;
-  int i=0;
-  for(auto itr = sv->begin(); itr != sv->end(); ++itr) {
-    // show values
-    cout << "index:" << i << " val:" << *itr << endl;
-    i++;
-  }
+    snapOfs << "firm" << " " << "pini" << " " << "pact" << " " << "demand" << " " << "supply" << " " << "delta"
+            << endl;;
 
-}
+    for (size_t i = 0; i < PactualVectorH.size(); i++) {
+      double pini = piniVectorH[i];
+      double pact = PactualVectorH[i];
+      double demand = DFirmVectorH[i];
+      double supply = MinPropAmountVectorH[i];
+      double delta = DeltaVectorH[i];
 
-void printHash2LayerIntIntDouble(char const *name, unordered_map<int, unordered_map<int, double> > *hash){
+      string id = rev_firm_index[i];
+      
+      // simple
+      //	snapOfs << itr->first << " " << setprecision(17) << itr->second << endl;;
 
-  cout << name << " is" << endl;
+      // ini, actual, supply, demand
+      snapOfs << std::setfill('0') << std::right << std::setw(9) << id << " " << setprecision(6) << pini << " " << pact
+              << " " << demand << " " << supply << " " << delta << endl;;
+    }
 
-  for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-    // show keys
-    cout << "from: " << itr->first << endl;
-    map<int, double> sortedVector2H((itr->second).begin(), (itr->second).end());
+    std::ostringstream ostar;
+    ostar << sPrintSnapFileBase << "OStar" << t;
 
-    for(auto itr2 = sortedVector2H.begin(); itr2 != sortedVector2H.end(); ++itr2) {
-      // show keys
-      cout << "    to: " << itr2->first << endl;
-      // show values
-      cout << "      val = " << itr2->second << "\n";
+    ofstream snapOfs2(ostar.str());
+    if (!snapOfs2) {
+      cerr << "Unable to open " << ostar.str() << " as snap output file at step " << t << endl;
+      exit(1);
+    }
+
+    // header
+    snapOfs2 << "client" << " " << "supplier" << " " << "Aij" << " " << "AdjustedOrder" << endl;
+
+    // order star
+    for (size_t i = 0; i < fATableHoH.size(); i++) {
+      for (auto pi : fATableHoH[i]) {
+        int j = pi.first;
+
+        double dAdjustedOrder = fOAdjustedFirmFirmHoH[i][j];
+        double dA = pi.second;
+
+	string idi = rev_firm_index[i];
+        string idj = rev_firm_index[j];
+	
+        snapOfs2 << idi << " " << idj << " " << dA << " " << dAdjustedOrder << endl;
+      }
     }
   }
 }
 
-void printHashVectorIntInt(char const *name, unordered_map<int, vector<int> > *hash){
-
-  cout << name << " is" << endl;
-
-  for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-    // show keys
-    cout << "sector: " << itr->first << endl;
-
-    cout << "      val =";
-    for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-      cout << " " << *itr2;
-    }
-    cout << endl;
-  }
-}
-
-
-static void usage(char *argv){
+static void usage(char *argv) {
   cerr << "Usage: " << endl;
-  cerr << "  " << argv << " [option] aTableLineFile cVectorFile piniVectorFile firmAffiFile pactOutputFile" << endl;
+  cerr << "  " << argv << " [option] aTableLineFile cVectorFile piniVectorFile firmAffiFile" << endl;
   cerr << "Option: " << endl;
-  fprintf(stderr,"  -a (int): adaptation (currently, 0: infty, 1: only once)\n");
-  fprintf(stderr,"  -A (str): adaptation counter file iff -a is on\n");
-  fprintf(stderr,"  -d (str): delta file (default null)\n");
-  fprintf(stderr,"  -D (int): distribution of initial inventory (0: uniform, 1: Poisson) (default 0: uniform)\n");
-  fprintf(stderr,"  -f (str): final consumption output file (default null)\n");
-  fprintf(stderr,"  -F : fulldebug\n");
-  fprintf(stderr,"  -o (int): order algorithm type. 0: normal, 1: keep initial demand, 2: ignore negative inv adjustment\n");
-  fprintf(stderr,"  -p (file:int:int...): get snapshot of production at indicated step(s). for more than one snapshot, int should be separated by :\n");
-  fprintf(stderr,"  -r (int): random seed (default 331)\n");
-  fprintf(stderr,"  -R (int): rationing algorithm 0. proportional, 1. FC low priority, 2. lower has high priority, 3. 1*2 (default proportional)\n");
-  fprintf(stderr,"  -s (str): stats output file (default null)\n");
-  fprintf(stderr,"  -t (int): simulation step (default 10)\n");
-  fprintf(stderr,"  -v (str): value added output file (default null)\n");
+  fprintf(stderr,
+          "  -b (int): recovery step type (0: proportional, 1: uniform (1/recday regardless of delta), 2: spike (immeidate), 3: renewal equation (cannot use without -c or -C), 4: exponential, 5: damped renewal (default: 0)\n");
+  fprintf(stderr, "  -c (int): proportional recovery day (default: off. greater than 0) (cannot use with -C)\n");
+  fprintf(stderr, "  -d (str): delta file (default null) (col.1 firm id, col.2 delta, (optional) col.3 day to be given (default 0)\n");
+  fprintf(stderr,
+          "  -D (int): distribution of inventory and target (0: target and ini inventory uniform, 1: target uniform and ini inventory Poisson, 2: target poisson and ini inventory filled.) (default 0: uniform)\n");
+  fprintf(stderr, "  -e : minimal inventory size (default 2) \n");
+  fprintf(stderr, "  -f (str): final consumption output file (default null)\n");
+  fprintf(stderr, "  -F : fulldebug\n");
+  fprintf(stderr, "  -i : inventory size (possible used as average of -D) \n");
+  fprintf(stderr, "  -M (str1):(str2):... daily CVector input file(s) (str1(base file name)str2(day).txt) (default null) designate id with FC different from CVector. others have CVector value as FC.\n");
+  fprintf(stderr, "  -m : mute\n");
+  fprintf(stderr,
+          "  -o (int): order algorithm type. 0: normal, 1: keep initial demand, 2: ignore negative inv adjustment\n");
+  fprintf(stderr,
+          "  -p (file:int:int...): get snapshot of production at indicated step(s). for more than one snapshot, int should be separated by :\n");
+  fprintf(stderr, "  -r (int): random seed (default 331)\n");
+  fprintf(stderr,
+          "  -R (int): rationing algorithm 0. proportional, 1. FC low priority, 2. lower has high priority, 3. 1*2 (default proportional)\n");
+  fprintf(stderr, "  -s (str): stats output file (default null)\n");
+  fprintf(stderr, "  -S (int): forcibly stop day (recovery occur AFTER the day) (delay of recovery) (default 0)\n");
+  fprintf(stderr, "  -t (int): simulation step (default 10)\n");
+  fprintf(stderr, "  -T (int): Tau (inventory adjustment ratio) (default 6)\n");
+  fprintf(stderr, "  -u : supress PAct output\n");
+  fprintf(stderr, "  -v (str): value added output file (default VA.txt)\n");
+  fprintf(stderr, "  -x (str): output total direct production loss (default null)\n");
+  fprintf(stderr, "  -X (str): PAct output file (default PAct.txt)\n");
+  fprintf(stderr, "  -z (file:file...): selective output files (default: None. Only one column to give IDs.)\n");
+  fprintf(stderr, "  -Z (str): predefined delta table (default null)\n");
   exit(1);
 }
 
+// print total direct production loss
+void printTotalDirectProductionLoss(int t, std::ofstream &dlossOfs) {
+
+  double dTotalCap = 0;
+  double dTotalValueAdded = 0;
+  for (size_t i = 0; i < DeltaVectorH.size(); i++) {
+    double dCap = DeltaVectorH[i] * piniVectorH[i];
+    double dVA = dCap * valueAddedVectorH[i];
+
+    dTotalCap += dCap;
+    dTotalValueAdded += dVA;
+  }
+
+  dlossOfs << t << " " << dTotalCap << " " << dTotalValueAdded << endl;
+}
+
 // full debug
-void fullDebug(int t){
+void fullDebug(int t, std::ofstream &debugOfs) {
 
-  unordered_map<int, int> *hashD;
-  hashD=&firmH;
-  map<int, int> sortedVectorH(hashD->begin(), hashD->end());
-  for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-    // show keys values
-    // i, pini, pact, ratio
-
-    int i = itr->first;
+  for (size_t i = 0; i < firmH.size(); i++) {
     double pini = piniVectorH[i];
     double delta = DeltaVectorH[i];
     double pcap = piniCapVectorH[i];
@@ -418,82 +380,49 @@ void fullDebug(int t){
     double pmax = PiniMaxVectorH[i];
     double pact = PactualVectorH[i];
     double demandA = DAdjustedFirmVectorH[i];
-    unordered_map<int, double> *hashS=&SFirmFirmHoH[i];
-    unordered_map<int, double> *hashO=&fOFirmFirmHoH[i];
 
-    debugFS << t << ", " << i << ", " << pini << ", " << delta << ", " << pcap << ", " << demand << ", " << pmax << ", " << pact << ", " << demandA ;
+    debugOfs << t << ", " << i << ", " << pini << ", " << delta << ", " << pcap << ", " << demand << ", " << pmax
+             << ", "
+             << pact << ", " << demandA;
 
     //       // inventory s
-    map<int, int> sortedVector2H(hashS->begin(), hashS->end());
-    for(auto itr = sortedVector2H.begin(); itr != sortedVector2H.end(); ++itr) {
-
-      debugFS << ", s(" << i << "," << itr->first << ")_" << itr->second;
-
+    const map<int, int> sortedVector2H(SFirmFirmHoH[i].begin(), SFirmFirmHoH[i].end());
+    for (const auto &itr : sortedVector2H) {
+      debugOfs << ", s(" << i << "," << itr.first << ")_" << itr.second;
     }
 
     // order
-    map<int, int> sortedVector3H(hashO->begin(), hashO->end());
-    for(auto itr = sortedVector3H.begin(); itr != sortedVector3H.end(); ++itr) {
-
-      debugFS << ", O(" << i << "," << itr->first << ")_" << itr->second;
-
+    const map<int, int> sortedVector3H(fOFirmFirmHoH[i].begin(), fOFirmFirmHoH[i].end());
+    for (const auto &itr: sortedVector3H) {
+      debugOfs << ", O(" << i << "," << itr.first << ")_" << itr.second;
     }
-    debugFS << endl;
-      
+    debugOfs << endl;
   }
-
 }
 
-
-void printAllInternal(){
-  cerr << "----- All Internal -----" << endl;
-
-  // debug
-  printHash2LayerIntIntDouble("SFirmFirmHoH", &SFirmFirmHoH);
-
-  // debug
-  printHash2LayerIntIntDouble("fOFirmFirmHoH", &fOFirmFirmHoH);
-
-  // debug
-  printHash2LayerIntIntDouble("bOFirmFirmHoH", &bOFirmFirmHoH);
-
-  // debug
-  printHash1LayerIntDouble("DFirmVectorH", &DFirmVectorH);
-
-  // debug
-  printHash2LayerIntIntDouble("AFirmSectorHoH", &AFirmSectorHoH);
-
-  // debug
-  printHash2LayerIntIntDouble("SFirmSectorHoH", &SFirmSectorHoH);
-
-  // debug
-  printHash2LayerIntIntDouble("PpropFirmSectorHoH", &PpropFirmSectorHoH);
-
-  // debug
-  printHash1LayerIntDouble("PactualVectorH", &PactualVectorH);
-
-  // debug
-  printHash1LayerIntDouble("piniVectorH", &piniVectorH);
-
-  // debug
-  printHash1LayerIntDouble("piniInputVectorH", &piniInputVectorH);
-  
-  // debug
-  printHash2LayerIntIntDouble("fOAdjustedFirmFirmHoH", &fOAdjustedFirmFirmHoH);
-
-  // debug
-  printHash2LayerIntIntDouble("bOAdjustedFirmFirmHoH", &bOAdjustedFirmFirmHoH);
-
-  // debug
-  printHash1LayerIntDouble("DAdjustedFirmVectorH", &DAdjustedFirmVectorH);
-
+typedef long unsigned int luint;
+luint poisson(luint lambda) {
+  double L = exp(-double(lambda));
+  luint k = 0;
+  double p = 1;
+  do {
+    k++;
+    double rNum = ((double) (rand() / (double) RAND_MAX));  // [TODO] stop using rand
+    p *= rNum;
+  } while (p > L);
+  return (k - 1);
 }
 
-
-void initializeModel(void){
+void initializeModel(uint64_t seed,
+                     std::ofstream &pactOfs,
+                     std::ofstream &pvalueOfs,
+                     std::ofstream &fcOfs,
+                     std::ofstream &statsOfs,
+                     std::vector<std::ofstream> &selectOutPActL,
+                     std::vector<std::ofstream> &selectOutVAL) {
 
   // create initial (t=0)
-  
+
   // S(i,j)
   // SFirmFirmHoH
 
@@ -507,2189 +436,1137 @@ void initializeModel(void){
   // bOFirmFirmHoH
   // bOAdjustedFirmFirmHoH
 
+  // decide inventory coefficient
+  // initial inventory size
+  std::vector<int> iniInventoryH(NUM_NODES, 0);
+  std::mt19937 rng(seed);
+  std::poisson_distribution<int> dist(inventoryN);
 
-  // create poisson dist
-  std::default_random_engine generator;
-  std::poisson_distribution<int> distribution(inventoryN);
+  for (size_t i = 0; i < firmH.size(); i++) {
+    // target inventory vector
+    // initialize tgtInvVectorH
+    if (iInvDistType == 0 || iInvDistType == 1) {
+      // uniform tgt and uniform ini
+      // uniform tgt and poisson ini
+      tgtInvVectorH[i] = inventoryN;
+    } else if (iInvDistType == 2) {
+      int tgt = 0;
+      while (tgt < iInventoryMin) {
+        tgt = dist(rng);
+      }
+      tgtInvVectorH[i] = tgt;
+    } else {
+      throw std::runtime_error("invalid option for -D");
+    }
+
+    if (iInvDistType == 0 || iInvDistType == 2) {
+      // uniform tgt and uniform ini
+      // poisson tgt and poisson ini
+      iniInventoryH[i] = tgtInvVectorH[i];
+    } else if (iInvDistType == 1) {
+      // uniform tgt and poisson ini
+      iniInventoryH[i] = dist(rng);
+    } else {
+      throw std::runtime_error("invalid option for -D");
+    }
+
+    // initialize min prop amount vector
+    MinPropAmountVectorH[i] = piniVectorH[i] * iniInventoryH[i];
+
+  }
 
   // using fAtable
-  for(auto itr = fATableHoH.begin(); itr != fATableHoH.end(); ++itr) {
-    
+  fOFirmFirmHoH = fATableHoH;
+  fOAdjustedFirmFirmHoH = fATableHoH;
+  // set inventory size
+  SFirmFirmHoH = fATableHoH;
+  for (size_t i = 0; i < SFirmFirmHoH.size(); i++) {
+    for (auto &sij : SFirmFirmHoH[i]) {
+      sij.second *= iniInventoryH[i];
+    }
+  }
+
+  std::vector<std::vector<std::pair<int, double>>> vBLinks(NUM_NODES);
+  for (size_t i = 0; i < fATableHoH.size(); i++) {
     // for each client
-    
-    // itr->first: client
-    // itr->second: suppliers
+    // i: client
+    // j: suppliers
     // suppliers <- order -- client
-
-    // decide inventory coefficient
-    // initial inventory size
-    int initialInventoryCoefficient;
-
-    if(iInvDistType==0){
-      // uniform
-      initialInventoryCoefficient=inventoryN;
-    }else if(iInvDistType==1){
-      // poisson
-
-      initialInventoryCoefficient=distribution(generator);
-
-    }else{
-      cerr << "Invalid option of -D" << endl;
-    exit(1);
-    }
-
-    // debug
-    //cout << "initialInventoryCoefficient " << initialInventoryCoefficient << endl;
-    
-    for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-      
-      // for each supplier
-
-      // does client exists in hash?
-
-      // forward creating hash
-      unordered_map<int, unordered_map<int, double> >::iterator findI;
-      findI = SFirmFirmHoH.find(itr->first);
-
-      if(findI == SFirmFirmHoH.end()){
-	// no
-
-	// debug
-	//      cout << "not found" <<endl;
-
-	unordered_map<int, double> SFirmH;
-	SFirmFirmHoH[itr->first]=SFirmH;
-
-	unordered_map<int, double> OFirmH;
-	fOFirmFirmHoH[itr->first]=OFirmH;
-
-	unordered_map<int, double> OAdjustedFirmH;
-	fOAdjustedFirmFirmHoH[itr->first]=OAdjustedFirmH;
-
-      }else{
-	// yes
-	// debug
-	//     cout << "found" << endl;
-      }
-
-      (SFirmFirmHoH[itr->first])[itr2->first]=itr2->second * initialInventoryCoefficient;
-      (fOFirmFirmHoH[itr->first])[itr2->first]=itr2->second;
-      (fOAdjustedFirmFirmHoH[itr->first])[itr2->first]=itr2->second;
-
+    for (const auto &ai : fATableHoH[i]) {
+      const size_t j = ai.first;
+      const double aij = ai.second;
       // input vector
-      piniInputVectorH[itr->first]=piniInputVectorH[itr->first]+itr2->second;
-
+      piniInputVectorH[i] += aij;
       // backward creating hash
-      unordered_map<int, unordered_map<int, double> >::iterator findI2;
-      findI2 = bOFirmFirmHoH.find(itr2->first);
-
-      if(findI2 == bOFirmFirmHoH.end()){
-	// no
-
-	// debug
-	//      cout << "not found" <<endl;
-
-	unordered_map<int, double> bOFirmH;
-	bOFirmFirmHoH[itr2->first]=bOFirmH;
-
-	unordered_map<int, double> bOAdjustedFirmH;
-	bOAdjustedFirmFirmHoH[itr2->first]=bOAdjustedFirmH;
-
-      }else{
-	// yes
-	// debug
-	//     cout << "found" << endl;
-      }
-
-      (bOFirmFirmHoH[itr2->first])[itr->first]=itr2->second;
-
-      // debug
-//       if(isnan(itr2->second)){
-// 	cerr << itr2->first << " " << itr->first << endl;
-// 	exit(1);
-//       }
-
-      (bOAdjustedFirmFirmHoH[itr2->first])[itr->first]=itr2->second;
-
+      vBLinks[j].push_back(std::make_pair(i, aij));
     }
   }
-
+  for (size_t j = 0; j < vBLinks.size(); j++) {
+    bOFirmFirmHoH[j].insert(vBLinks[j].cbegin(), vBLinks[j].cend());
+  }
   // initialize start hash
-  bOStartFirmFirmHoH=bOFirmFirmHoH;
+  bOAdjustedFirmFirmHoH = bOFirmFirmHoH;
+  bOIniFirmFirmHoH = bOFirmFirmHoH;
 
-  // calculate value added
-  for(auto itr = piniVectorH.begin(); itr != piniVectorH.end(); ++itr) {
-    int firm=itr->first;
-    double output=itr->second;
-
-    //debug
-    //    cout << "firm " << firm << " output " << output << endl;
-
-    if(output<=0){
-      cout << "firm " << firm << " output(Pini) is <=0" << endl;
-    }
-
-    double input=piniInputVectorH[firm];
-
-    if(output<=0){
-      valueAddedVectorH[itr->first]=0;
-
-      // debug
-      cout << "firm " << firm << " output is <=0" << endl;
-      
-    }else if((output-input)<=0){
-
-      // debug
-      cout << "firm " << firm << " value added is <=0" << endl;
-
-      //      valueAddedVectorH[itr->first]=0;
-
-      // allow it
-      valueAddedVectorH[itr->first]=(output-input)/output;
-	    
-    }else{
-      
-      // output-input / output
-      valueAddedVectorH[itr->first]=(output-input)/output;
-    }
-
-    // debug
-    //    cerr << "firm " << firm << endl;
-    //    cerr << "input " << input << endl;
-    //    cerr << "output " << output << endl;
-    //    cerr << "value added " << valueAddedVectorH[firm] << endl;
-  }
-  
 
   // demand
 
   // initialize
   // bOFirmFirmHoH
   // cAdjusted
-
   // cVectorH is defined for every firm
 
-  unordered_map<int, int> *hashII;
-  hashII=&firmH;
-    
-  for(auto itr = hashII->begin(); itr != hashII->end(); ++itr) {
-    DFirmVectorH[itr->first]=cVectorH[itr->first];
-  }
+  DFirmVectorH = cVectorH;
+  cAdjustedVectorH = cVectorH;
 
-  // initilize cAdjusted
-  cAdjustedVectorH=cVectorH;
-
-  for(auto itr = bOFirmFirmHoH.begin(); itr != bOFirmFirmHoH.end(); ++itr) {
+  for (size_t i = 0; i < bOFirmFirmHoH.size(); i++) {
     // fOrder: client -> supplier
     // bOrder: supplier -> client
     // demand means orders toward the firm
-
-    double totalDemand=0;
-    for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-      totalDemand=totalDemand+itr2->second;
+    double totalDemand = 0.0;
+    for (const auto &it: bOFirmFirmHoH[i]) {
+      totalDemand += it.second;
     }
-
-    DFirmVectorH[itr->first]=DFirmVectorH[itr->first]+totalDemand;
-
-//     // debug
-//     //    if(itr->first==400227878){521036828
-//     if(itr->first==521036828){
-//       cerr <<     DAdjustedFirmVectorH[itr->first] << endl;
-//       exit(1);
-//     }
-
+    DFirmVectorH[i] += totalDemand;
   }
-
-  DAdjustedFirmVectorH=DFirmVectorH;
 
   // copy Actual to D
+  DAdjustedFirmVectorH = DFirmVectorH;
+  piniCapVectorH = DFirmVectorH;
+  PiniMaxVectorH = DFirmVectorH;
+  PactualVectorH = DFirmVectorH;
 
-  PactualVectorH=DFirmVectorH;
-  PiniMaxVectorH=DFirmVectorH;
-  piniCapVectorH=DFirmVectorH;
-
-  // initialize adaptation
-
-  if(iAdapType!=-1){
-
-    int initNum=iAdapType;
-
-    if(iAdapType==0){
-      initNum=-1;
+  // correct pini
+  for (size_t i = 0; i < piniVectorH.size(); i++) {
+    if(!almost_equal(DFirmVectorH[i],piniVectorH[i])){
     }
-
-    unordered_map<int, int> *hash;
-    hash=&firmH;
-
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-      iAdaptH[itr->first]=initNum;
-      iAdaptDoneH[itr->first]=0;
-    }
+    piniVectorH[i] = DFirmVectorH[i];
   }
+  
+  // calculate value added
+  for (size_t i = 0; i < piniVectorH.size(); i++) {
+    double output = piniVectorH[i];
+    double input = piniInputVectorH[i];
+    valueAddedVectorH[i] = (output <= 0.0) ? 0.0 : (output - input) / output;
+  }
+
+  
 
   // output
 
   // pact
-   double totalPactual=0;
-   for(auto itr = PactualVectorH.begin(); itr != PactualVectorH.end(); ++itr) {
-     totalPactual=totalPactual+itr->second;
-   }
-  // disaster happes at 0, so as a pre-disaster, t=-1 is output
-  ofs << -1 << " " << totalPactual << endl;  
+  double totalPactual = 0.0;
+  for (double x : PactualVectorH) {
+    totalPactual += x;
+  }
+  // disaster happens at 0, so as a pre-disaster, t=-1 is output
 
-  double totalVAdded=0;
-  for(auto itr = PactualVectorH.begin(); itr != PactualVectorH.end(); ++itr) {
-    totalVAdded=totalVAdded+valueAddedVectorH[itr->first]*itr->second;
+  if(!iPActSupFlag){
+    pactOfs << -1 << " " << setprecision(17) << totalPactual << endl;
   }
 
-  if(pvfs){
-    pvfs << -1 << " " << totalVAdded << endl;  
+  // selective
+  if (iSelectiveOutput) {
+    for (int i = 0; i < selectOutPActL.size(); i++) {
+
+      double totalPactual = 0.0;
+      for (auto j : selectiveOutputLoH[i]) {
+        int id = j.first;
+        totalPactual += PactualVectorH[id];
+      }
+
+      // disaster happens at 0, so as a pre-disaster, t=-1 is output
+      selectOutPActL[i] << -1 << " " << setprecision(17) << totalPactual << endl;
+
+    }
   }
+
+  // va
+  double totalVAdded = 0.0;
+  for (size_t i = 0; i < PactualVectorH.size(); i++) {
+    totalVAdded += valueAddedVectorH[i] * PactualVectorH[i];
+  }
+  if (pvalueOfs) {
+    pvalueOfs << -1 << " " << setprecision(17) << totalVAdded << endl;
+  }
+
+  // selective
+  if (iSelectiveOutput) {
+    for (int i = 0; i < selectOutVAL.size(); i++) {
+
+      double totalVA = 0.0;
+      for (auto j : selectiveOutputLoH[i]) {
+        int id = j.first;
+        totalVA += valueAddedVectorH[id] * PactualVectorH[id];
+      }
+
+      // disaster happens at 0, so as a pre-disaster, t=-1 is output
+      selectOutVAL[i] << -1 << " " << setprecision(17) << totalVA << endl;
+
+    }
+  }
+
 
   // create A total (i,s) (Fixed)
   // A is used for target inventory size
-
   // create S total (i,s)
-  unordered_map<int, unordered_map<int, double> > *hash;
-
-  hash=&fATableHoH;
-
-  for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-    // itr->first is i (order maker)
-    int i=itr->first;
-
-    // itr->second is order receiver's H
-    // order receivers'H <- order -- i
-
-    unordered_map<int, unordered_map<int,double> >::iterator findI;
-    findI = AFirmSectorHoH.find(i);
-
-    if(findI == AFirmSectorHoH.end()){
-      // not found
-      // first time for firm i
-
-      // debug
-      //      cout << "not found" <<endl;
-
-      unordered_map<int, double> ASectorH;
-      AFirmSectorHoH[i]=ASectorH;
-
-      unordered_map<int, double> SSectorH;
-      SFirmSectorHoH[i]=SSectorH;
-
-    }else{
-      // yes
-      // debug
-      //     cout << "found" << endl;
-    }
+  for (size_t i = 0; i < fATableHoH.size(); i++) {
 
     // check j <- i order
-    for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-      // itr2->first is j
-      int j=itr2->first;
-
-      // itr2->second is A(i,j)
-      double a=itr2->second;
+    for (const auto &it: fATableHoH[i]) {
+      const size_t j = it.first;
+      const double a = it.second;
 
       // get sector
-      int sj=firmAffiH[j];
-
-      unordered_map<int,double>::iterator findI2;
-      findI2 = AFirmSectorHoH[i].find(sj);
-
-      if(findI2 == AFirmSectorHoH[i].end()){
-	// not found
-
-	// debug
-	//      cout << "not found" <<endl;
-
-	(AFirmSectorHoH[i])[sj]=0;
-
-	(SFirmSectorHoH[i])[sj]=0;
-
-      }else{
-	// yes
-	// debug
-	//     cout << "found" << endl;
+      int sj = firmAffiH[j];
+      if (AFirmSectorHoH[i].find(sj) == AFirmSectorHoH[i].end()) {
+        AFirmSectorHoH[i][sj] = 0.0;
+        SFirmSectorHoH[i][sj] = 0.0;
       }
-
-      (AFirmSectorHoH[i])[sj]=(AFirmSectorHoH[i])[sj]+a;
-
-      //old      (SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+inventoryN*a;
-      (SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+(fATableHoH[i])[j];
-
+      AFirmSectorHoH[i][sj] += a;
+      SFirmSectorHoH[i][sj] += iniInventoryH[i] * fATableHoH[i][j];
     }
   }
 
-  // final consume file open
-  if(finalConsumeOutputFile.size()>0){
-    fcOfs.open(finalConsumeOutputFile.c_str());
-    if(!fcOfs){
-      cerr << "Unable to open " << finalConsumeOutputFile << " as finalConsumeOutputFile" << endl;
-      exit(1);
-    }
-  }
 
-  // stats file open
-  if(statsOutputFile.size()>0){
-    stOfs.open(statsOutputFile.c_str());
-    if(!stOfs){
-      cerr << "Unable to open " << statsOutputFile << " as statsOutputFile" << endl;
-      exit(1);
-    }
-  }
 
   // output to stat file
-  if(stOfs){
-        stOfs << "totalPactutalStart " << totalPactual << endl;
-        stOfs << "totalValueAddedStart " << totalVAdded << endl;
+  if (statsOfs) {
+    statsOfs << "totalPactutalStart " << totalPactual << endl;
+    statsOfs << "totalValueAddedStart " << totalVAdded << endl;
   }
 
   // output
   // final consumption
-  if(fcOfs){
-    double totalFC=0;
-    for(auto itr = cAdjustedVectorH.begin(); itr != cAdjustedVectorH.end(); ++itr) {
-      totalFC=totalFC+itr->second;
+  if (fcOfs) {
+    double totalFC = 0.0;
+    for (double x: cAdjustedVectorH) {
+      totalFC += x;
     }
     fcOfs << "-1 " << totalFC << endl;
   }
-
-  // debug
-  //    printAllInternal();
-  //    exit(1);
   
 }
 
-void hazard(){
+void hazard(const std::string &deltaFile, std::ofstream &statsOfs) {
 
-  // initialize deltaVector with 0
-  for(auto itr = piniVectorH.begin(); itr != piniVectorH.end(); ++itr) {
-    DeltaVectorH[itr->first]=0;
+  hiddenDeltaVectorH = DeltaReserveVectorH;
+
+  // put recovery step
+  if (iRecoveryDay > 0) {
+    for (size_t i = 0; i < DeltaReserveVectorH.size(); i++) {
+      recoveryStepH[i] = DeltaReserveVectorH[i] / iRecoveryDay;
+    }
   }
-
-  // deltaFile
-  if(deltaFile.size()>0){
-
-    string str;
-    while(getline(ifsDelta,str)){
-      string tmp;
-      istringstream stream(str);
-      vector<string> result;
-      while(getline(stream,tmp,' ')){
-
-	// debug
-	//	  cout<< tmp << endl;
-
-	result.push_back(tmp);
-      }
-
-      // does source exists in hash?
-      unordered_map<int, double>::iterator findI;
-
-      DeltaVectorH[atoi(result[0].c_str())]=atof(result[1].c_str());
-
-    }
-
-  }
-
-  // total direct damage
-  double totalDamage=0;
-
-  // total firms with direct damage
-  double damagedNum=0;
-
-  // input damage
-  for(auto itr = piniVectorH.begin(); itr != piniVectorH.end(); ++itr) {
-    piniCapVectorH[itr->first]=piniVectorH[itr->first]*(1-DeltaVectorH[itr->first]);
-
-
-    if(piniCapVectorH[itr->first]<piniVectorH[itr->first]){
-      damagedNum++;
-
-    // debug
-      //      cerr << itr->first << " " << piniVectorH[itr->first] << " " << piniCapVectorH[itr->first] << " " << piniCapVectorH[itr->first]/piniVectorH[itr->first] << endl;
-
-    }
-
-    // stats
-    totalDamage=totalDamage+piniVectorH[itr->first]*DeltaVectorH[itr->first];
-  }
-
-  // debug
-  //  cerr << "totalDamage " << totalDamage << endl;
-
-  if(stOfs){
-    stOfs << "totalDamage " << totalDamage << endl;
-    stOfs << "totalDamageFirmNum " << damagedNum << endl;
-  }
-
-  // debug
-  //  printHash1LayerIntDouble("piniCapVectorH", &piniCapVectorH);
-
-}
-
-// adapt
-void adapt(){
-
-  // NB: there are several types of adaptation functions
-  
-  // clear adapt
-  adaptHoL.clear();
-
-  // for each firm
-  // probability for adapatation is calculated by using Ai,j and O*i,j
-  // choose the most redundant and better situation
-  // probability is caluculated in adapProbFunc
-
-  // debug
-  //  cerr << "---------- adapt" << endl;
-
-  // check all firms
-  // (order should be random in the future implementation)
-
-  unordered_map<int, int> *hash;
-  hash=&firmH;
-  for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-    int i=itr->first;
-
-    if(iAdaptH[i]==0){
-      continue;
-    }
-
-    // debug
-    //    cerr << "---------- checking firm " << i << endl;
-
-    // For all Ai,j
-    
-    // Find small O* 
-
-    // (Ai,j-O*i,j)/Ai,j
-    // ordered
-    unordered_map<int,double> orderUnFullfillH;
-
-    unordered_map<int, double> *hash2;      
-    try{
-      //      hash2=&(fOAdjustedFirmFirmHoH.at(i));
-      hash2=&(fOAdjustedFirmFirmHoH[i]);
-      }
-    catch(const std::out_of_range& oor){
-
-      // it is possible that there is no Oi,j
-      // terminal node
-      continue;
-    }
-
-    // Oi,j unullfill
-    // hash key vector
-    vector<int> keyL;
-
-    // max
-    int maxIndex=-1;
-    double maxVolume=-1;
-
-    for(auto itr2 = hash2->begin(); itr2 != hash2->end(); ++itr2) {
-      
-      int j=itr2->first;
-
-      // debug
-      //      cerr << "firm j: " << j << endl;
-
-      keyL.push_back(j);
-
-      // calculate Oi,j unfullfillment
-      // (A - adjusted order) / A
-      //      orderUnFullfillH[j]=( (fATableHoH[i])[j]-itr2->second )/ (fATableHoH[i])[j] ;
-
-      // debug
-      //      cerr << "(fATableHoH[" << i << "])[" << j << "] " << (fATableHoH[i])[j] << endl;
-
-      // (order - adjusted order) / order
-      orderUnFullfillH[j]=( (fOFirmFirmHoH[i])[j]-itr2->second )/ (fOFirmFirmHoH[i])[j] ;
-
-      // debug
-      //      cerr << "(fOFirmFirmHoH[" << i << "])[" << j << "] " << (fOFirmFirmHoH[i])[j] << endl;
-
-      // debug
-      //      cerr << "(fOAdjustedFirmFirmHoH[" << i << "])[" << j << "] " << itr2->second << endl;
-
-      // debug
-      //      cerr << "orderUnFullfillH[" << j << "] " << orderUnFullfillH[j] << endl;
-
-      if(maxVolume<orderUnFullfillH[j]){
-	maxVolume=orderUnFullfillH[j];
-	maxIndex=j;
-
-	// debug
-	//	cerr << "maxIndex: " << maxIndex << endl;
-	//	cerr << "maxVolume: " << maxVolume << endl;
-      }
-
-    }
-
-    // debug
-//      unordered_map<int,double> *dHash;
-//      dHash=&(orderUnFullfillH);
-//      for(auto itrd = dHash->begin(); itrd != dHash->end(); ++itrd) {
-//        int j=itrd->first;
-//        cerr << "i: " << i << " j: " << j << " unfullfill : " << itrd->second << endl;
-//      }
-
-    // debug
-//     vector<int> *dv;
-//     dv=&(keyL);
-//     cerr << "keyL:" << endl;
-//     for(auto itrd = dv->begin(); itrd != dv->end(); ++itrd) {
-//       cerr << " " << *itrd ;
-//     }
-//     cerr << endl;
-    
-    // debug
-    //    cerr << "shuffle" << endl;
-    
-    // shuffle key list
-    //    random_shuffle(keyL.begin(), keyL.end());
-
-    // debug
-    //      vector<int> *dv;
-    //      dv=&(keyL);
-    //      cerr << "keyL:" << endl;
-    //      for(auto itrd = dv->begin(); itrd != dv->end(); ++itrd) {
-      
-    //        cerr << " " << *itrd ;
-
-    //      }
-    //      cerr << endl;
-
-    // use maximum unfulfillment
-    // use only max
-    // (however a lot of other algorithm is possible)
-
-    if(maxIndex==-1){
-      // does not exist
-
-      // debug
-      //      cerr << "no unfullfill candidate" << endl;
-
-      continue;
-    }else{
-      // exist
-      
-    }
-
-    // max=j
-    int j=maxIndex;
-
-    // adap prob
-    double adapProb=adapProbFunc(orderUnFullfillH[j]);
-
-    // debug
-    //    cerr << "i (" << i << ") -> j (" << j << ") unfullfill: " << orderUnFullfillH[j] << " adap prob: " << adapProb << endl;
-
-    // randm
-    // use 7 digit
-    double rNum=((double)(rand()%1000000))/1000000;
-
-    // debug
-    //    cerr << "rNum " << rNum << endl;
-    
-    // rand
-    if(rNum>adapProb){
-      // do nothing
-
-      // debug
-      //      cerr << "no swap by prob" << endl;
-
-      continue;
-
-    }else{
-
-      // debug
-      //      cerr << "swap activated" << endl;
-
-    }
-
-    // this i,j is the target of adaptation
-    // get j's sector
-    int jSec=firmAffiH[j];
-
-    // debug
-    //    cerr << "j(" << j << ")'s sector is " << jSec << endl;
-
-    // get redundancy
-
-    vector<int> *pv;
-    pv=&(secFirmHoL[jSec]);
-
-// 	int maxIndex=-1;
-// 	double max=-1;
-
-    // debug
-    //    cerr << "redundant list: " << endl;
-
-    // search in the sector
-    int maxIndexK=-1;
-    double maxVolumeK=-1;
-
-    // hash2 is set to the link of i's target
-    hash2=&(fOAdjustedFirmFirmHoH[i]);
-
-    for(auto itr = pv->begin(); itr != pv->end(); ++itr) {
-
-      int k =*itr;
-      double volume;
-
-      // discard unnecessary candidate
-
-      // debug
-      //      cerr << "k: " << k << endl;
-
-      // i itself
-      if(i==k){
-
-	// debug
-	//	cerr << "j=k" << endl;
-
-	continue;
-      }
-
-      // the link i already has
-      unordered_map<int, double>::iterator findI;
-      findI = hash2->find(k);
-      if(findI == hash2->end()){
-	// no
-
-	// debug
-	//	cout << "k is not found in link of j" <<endl;
-
-
-      }else{
-	// yes
-
-	// debug
-	//	cout << "found k in link of j" << endl;
-
-	// ignore it
-	continue;
-
-      }
-
-      // redundancy（k's supplier, from i's viewpoint, it is supplier's supplier）
-      
-      // check order and adjusted order of k's supplier
-      
-      // calculate redundancy
-
-      // consider current redundancy
-      unordered_map<int, double> *hashOK;
-      int iCatchF=0;
-      try{
-	hashOK=&(fOFirmFirmHoH[k]);
-      }
-      catch(const std::out_of_range& oor){
-	// no supplier
-	// terminal
-	iCatchF=1;
-      }
-
-      int iLessOrderF=0;
-      
-      if(iCatchF==0){
-
-	// there are k's suppliers
-	for(auto itrOK = hashOK->begin(); itrOK != hashOK->end(); ++itrOK) {
-	  int l=itrOK->first;
-	  double order=itrOK->second;
-	  double aOrder=(fOAdjustedFirmFirmHoH[k])[l];
-	  if(order>aOrder){
-	    iLessOrderF=1;
-	    break;
-	  }
-	}
-
-      }
-
-      if(iLessOrderF){
-	// k's adjustedOrder is less than order
-	continue;
-      }
-
-      // possible productivity based on capacity and inventory
-      volume=PiniMaxVectorH[k]-DAdjustedFirmVectorH[k];
-
-      // debug
-//       cerr << "PiniMaxVectorH[k] " << PiniMaxVectorH[k] << endl;
-//       cerr << "DAdjustedFirmVectorH[k] " << DAdjustedFirmVectorH[k] << endl;
-//       cerr << "redundant volume " << volume << endl;
-
-      // debug
-      //      cerr << "firm " << k << " volume " << volume << endl;
-	    
-      // 	  firmAndVolume data;
-      // 	  data.setVolume(volume);
-      // 	  data.setFirm(j);
-      // 	  redOrderedL.push_back(data);
-
-      if(volume>maxVolumeK){
-
-	maxIndexK=k;
-	maxVolumeK=volume;
-
-	// debug
-// 	cerr << "max is recorded" << endl;
-// 	cerr << "maxIndexK " << k << endl;
-// 	cerr << "maxVolumeK " << maxVolumeK << endl;
-
-      }
-
-    }
-
-    if(maxIndexK!=-1){
-
-    }else{
-      // not found
-
-      // debug
-      //      cerr << "no candidate" << endl;
-
-      continue;
-    }
-
-    // k is fixed
-    int k=maxIndexK;
-    double kvolume=maxVolumeK;
-
-    // is the volume enough
-
-    // debug
-//     cerr << "kvolume " << kvolume << endl;
-//     cerr << "orderUnFullfillH[j] " << orderUnFullfillH[j] << endl;
-//     cerr << "(fATableHoH[i])[j] " << (fATableHoH[i])[j] << endl;
-
-    double intrinsicOrderIJ;
-    intrinsicOrderIJ=(fOFirmFirmHoH[i])[j];
-
-    // debug
-    //    cerr << "Oij's adjusted order is " << intrinsicOrderIJ << endl;
-
-    // redundancy is more than order?
-
-    // this equation follows original paper
-//    if(kvolume<( orderUnFullfillH[j] * (fATableHoH[i])[j] )){
-
-    // kvolumeとadjustedOrderIJの差も本来判断に入るはず
-
-    // this is wrong
-    // maxVolumeは
-    //    if(kvolume <= adjustedOrderIJ){
-
-    // Redundancy is greater than order (not adjusted order)
-
-    if(kvolume <= intrinsicOrderIJ){
-
-      // no
-      // less than order
-
-      // debug
-      //      cerr << "substitute volume short" << endl;
-      
-      continue;
-
-    }else{
-
-      // debug
-      //      cerr << "substitute volume fullfill" << endl;
-
-    }
-
-    // debug
-//     cerr << "i: " << i << " j: " << j << " k: " << k << endl;
-//     cerr << "redandant volume of k " << kvolume << endl;
-//     cerr << "intrinsicOrder of i j " << intrinsicOrderIJ << endl;
-
-    // swith j to k
-
-    vector<int> adaptV;
-    adaptV.push_back(j);
-    adaptV.push_back(k);
-    adaptHoL[i]=adaptV;
-
-    // fATableHoH: move
-    // bATableHoH: move
-    // cVectorH: no move
-    // piniVectorH: move（partially）
-    // firmAffiH: no move
-    // firmH: no move
-    // fOFirmFirmHoH: move
-    // fOAdjustedFirmFirmHoH: move
-    // bOFirmFirmHoH: move
-    // bOStartFirmFirmHoH: move
-    // bOAdjustedFirmFirmHoH: move
-    // DFirmVectorH: move（partially）
-    // DAdjustedFirmVectorH: move（partially）
-    // cAdjustedVectorH: no move
-    // piniCapVectorH: move（and modification）
-    // SFirmFirmHoH: move
-    // SFirmSectorHoH: move
-    // AFirmSectorHoH: move
-    // PpropFirmSectorHoH: move
-    // PiniMaxVectorH: move（and modification）
-    // PactualVectorH: move（and modification）
-    // DeltaVectorH: no move
-
-    // fATableHoH: move
-    double copyFAij;
-    copyFAij=(fATableHoH[i])[j];
-    (fATableHoH[i])[k]=copyFAij;
-    (fATableHoH[i]).erase(j);
-
-    // bATableHoH: move
-    double copyBA;
-    copyBA=(bATableHoH[j])[i];
-    (bATableHoH[k])[i]=copyBA;
-    (bATableHoH[j]).erase(i);
-
-    // cVectorH: no move
-
-    // piniVectorH: no move
-    //piniVectorH[j]=piniVectorH[j]-copyFAij;
-    //piniVectorH[k]=piniVectorH[k]+copyFAij;
-
-    // firmAffiH: no move
-
-    // firmH: no move
-
-    // fOFirmFirmHoH: move
-    // but not necessary
-    double copyFOij;
-    copyFOij=(fOFirmFirmHoH[i])[j];
-    (fOFirmFirmHoH[i])[k]=copyFOij;
-    (fOFirmFirmHoH[i]).erase(j);
-
-    // fOAdjustedFirmFirmHoH: move
-    double copyFOAij;
-    copyFOAij=(fOAdjustedFirmFirmHoH[i])[j];
-    (fOAdjustedFirmFirmHoH[i])[k]=copyFOAij;
-    (fOAdjustedFirmFirmHoH[i]).erase(j);
-
-    // bOFirmFirmHoH: move
-    double copyBOji;
-    copyBOji=(bOFirmFirmHoH[j])[i];
-    (bOFirmFirmHoH[k])[i]=copyBOji;
-    (bOFirmFirmHoH[j]).erase(i);
-
-    // bOStartFirmFirmHoH: move
-    double copyBOSji;
-    copyBOSji=(bOStartFirmFirmHoH[j])[i];
-    (bOStartFirmFirmHoH[k])[i]=copyBOSji;
-    (bOStartFirmFirmHoH[j]).erase(i);
-
-    // bOAdjustedFirmFirmHoH: move
-    double copyBOAji;
-    copyBOAji=(bOAdjustedFirmFirmHoH[j])[i];
-    (bOAdjustedFirmFirmHoH[k])[i]=copyBOAji;
-    (bOAdjustedFirmFirmHoH[j]).erase(i);
-
-    // DFirmVectorH: no move
-    // DAdjustedFirmVectorH: move（partially）
-    // cAdjustedVectorH: no move
-
-    // piniCapVectorH: move（and modification）
-    //piniCapVectorH[j]=piniVectorH[j]*(1-DeltaVectorH[j]);
-    //piniCapVectorH[k]=piniVectorH[k]*(1-DeltaVectorH[k]);
-
-    // SFirmFirmHoH: move
-    double copySij;
-    copySij=(SFirmFirmHoH[i])[j];
-    (SFirmFirmHoH[i]).erase(j); // no inventory for j
-    (SFirmFirmHoH[i])[k]=copySij; // move inventory
-
-    // SFirmSectorHoH: no move（but calculated）
-
-    // AFirmSectorHoH: no move
-
-    // PpropFirmSectorHoH: no move（but calculated）
-    // PiniMaxVectorH: no move（but calculated）
-    // PactualVectorH: no move（but calculated）
-    // DeltaVectorH: no move
-
-    // adaptation count minus one
-    if(iAdaptH[i]==-1){
-
-    }else{
-      iAdaptH[i]--;
-      iAdaptDoneH[i]++;
-    }
-    
-  }
-
-  // debug
-  //  cerr << "adapt end" << endl;
 
 }
 
 
-void simulation(){
-  // simulation start
-  // all variables are already initialized
+void sim_inventoryRenewal() {
 
-  for(int t=0;t<simulationStep;t++){
+  // process 3 ==============================================================
+  // renewal of inventory
+  // SFirmFirmHoH
 
-    // debug
-    //    cout << "*************************************************************** time " << t << endl;
-  
-    // process 3 ==============================================================
-    // renewal of inventory
-    // SFirmFirmHoH
+  // original paper uses j,i but here uses i,j
 
-    // debug
-    //    cerr << "inv renewal" << endl;
+  //#pragma omp parallel for
+  for (size_t i = 0; i < SFirmFirmHoH.size(); i++) {
+    const auto row = &SFirmFirmHoH[i];
 
-    // original paper uses j,i but here uses i,j
-    unordered_map<int, unordered_map<int, double> > *hash;
+    // Inventory is reduced by equal proportion
+    // obtain required amount (in ratio) of consumption for each sector
+    auto RequiredConsumptionRatioFirmSectorH = AFirmSectorHoH[i];  // [TODO] copying. could be slow.
 
-    hash=&SFirmFirmHoH;
-
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-      // itr->first is i
-
-      for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-	// itr2->first is j
-	// itr2->second is s(i,j)
-
-	// if piniVector=0, renewal equation is different
-
-	double newInventory;
-	
-	if(piniVectorH[itr->first]==0){
-	  // avoid zero division
-	  // no change
-	  newInventory=itr2->second;
-	}else{
-	  newInventory=
-	    itr2->second // S(i,j)
-	    + (fOAdjustedFirmFirmHoH[itr->first])[itr2->first] // O*(i,j)
-	    - (fATableHoH[itr->first])[itr2->first] * PactualVectorH[itr->first] / piniVectorH[itr->first] // A(i,j)*Pia(t-1)/Piini
-	    ;
-	}
-
-	// debug
-// 	if(isnan(newInventory)){
-// 	  cerr << "itr->first " << itr->first << endl;
-// 	  cerr << "itr2->first " << itr2->first << endl;
-// 	  cerr << "itr2->second " << itr2->second << endl;
-// 	  cerr << "(fOAdjustedFirmFirmHoH[itr->first])[itr2->first] " << (fOAdjustedFirmFirmHoH[itr->first])[itr2->first] << endl;
-// 	  cerr << "(fATableHoH[itr->first])[itr2->first] " << (fATableHoH[itr->first])[itr2->first] << endl;
-// 	  cerr << "PactualVectorH[itr->first] " << PactualVectorH[itr->first] << endl;
-// 	  cerr << "piniVectorH[itr->first] " << piniVectorH[itr->first] << endl;
-// 	  exit(1);
-// 	}
-
-	// debug
-
-// 	  cerr << "itr->first " << itr->first << endl;
-// 	  cerr << "itr2->first " << itr2->first << endl;
-// 	  cerr << "itr2->second " << itr2->second << endl;
-// 	  cerr << "(fOAdjustedFirmFirmHoH[itr->first])[itr2->first] " << (fOAdjustedFirmFirmHoH[itr->first])[itr2->first] << endl;
-// 	  cerr << "(fATableHoH[itr->first])[itr2->first] " << (fATableHoH[itr->first])[itr2->first] << endl;
-// 	  cerr << "PactualVectorH[itr->first] " << PactualVectorH[itr->first] << endl;
-// 	  cerr << "piniVectorH[itr->first] " << piniVectorH[itr->first] << endl;
-
-	// here minus inventory is possible
-	// this is firm level inventory
-	// and production is based on sector
-	// therefore, at consumption, there is possible that inventory lower than zero
-	if(newInventory<0){
-	  newInventory=0;
-	}
-
-	itr2->second = newInventory;
+    for (auto &itrA : RequiredConsumptionRatioFirmSectorH) {
+      if (almost_equal(SFirmSectorHoH[i][itrA.first], 0)) {
+        itrA.second = 0;
+      } else {
+        itrA.second = (PactualVectorH[i] / piniVectorH[i]) * (itrA.second / SFirmSectorHoH[i][itrA.first]);
       }
     }
 
-    // debug
-    //    printHash2LayerIntIntDouble("SFirmFirmHoH", &SFirmFirmHoH);
+    for (auto &itr2 : SFirmFirmHoH[i]) {
+      // itr2->first is j
+      // itr2->second is s(i,j)
+      // if piniVector=0, renewal equation is different
+      const int j = itr2.first;
+      const int sj = firmAffiH[j];
+      const double sjConsRatio = RequiredConsumptionRatioFirmSectorH[sj];
+
+      double newInventory;
+      if (piniVectorH[i] == 0) {
+        // avoid zero division
+        // no change
+        newInventory = itr2.second;
+      } else {
+        newInventory =
+            itr2.second // S(i,j)
+                + fOAdjustedFirmFirmHoH[i][j] // O*(i,j)
+                - itr2.second * sjConsRatio;
+        //	    - (fATableHoH[i])[j] * PactualVectorH[i] / piniVectorH[i] // A(i,j)*Pia(t-1)/Piini
+      }
+
+      // here minus inventory is possible
+      // this is firm level inventory
+      // and production is based on sector
+      // therefore, at consumption, there is possible that inventory lower than zero
+      if (newInventory < 0.0 || almost_equal(newInventory, 0.0)) {
+        newInventory = 0.0;
+      }
+      itr2.second = newInventory;
+    }
+  }
+}
 
 
-    // check adaptation
+void sim_order() {
+  // process 4 ==============================================================
+  // renewal of Order
+  // fOFirmFirmHoH, bOFirmFirmHoH
+  // Adjusted is later
 
-    // adapt
-    if(iAdapType!=-1){
-      adapt();
+  // NB: 'b' means backward and the opposite of 'f'
+
+  // use hash again
+  // original paper uses j,i but here uses i,j
+
+#pragma omp parallel for
+  for (size_t i = 0; i < fOFirmFirmHoH.size(); i++) {
+    for (auto &itr2 : fOFirmFirmHoH[i]) {
+      // itr2->first is j
+      // itr2->second is o(i,j)
+      const int j = itr2.first;
+
+      // use Dadjusted
+      double newOrder;
+      if (piniVectorH[i] == 0) {
+        // order=0 is not accepted
+        // newOrder!=0
+        // order the amount based on fATable
+        newOrder = fATableHoH[i][j];
+        // Si,j is constant
+        // consumption is always equalt to fATable
+      } else {
+        if (iOrderTypeFlag == 0) {
+          // normal order
+          newOrder =
+              // original
+              fATableHoH[i][j] * DAdjustedFirmVectorH[i] / piniVectorH[i] // 1st term
+                  + 1 / tau
+                      * (tgtInvVectorH[i] * fATableHoH[i][j] * DAdjustedFirmVectorH[i]
+                          / piniVectorH[i] // 2nd term target inventory
+                          - SFirmFirmHoH[i][j]); // 3rd term
+
+        } else if (iOrderTypeFlag == 1) {
+          // inventory ini keep
+          newOrder =
+              fATableHoH[i][j] * DAdjustedFirmVectorH[i] / piniVectorH[i] // 1st term
+                  + 1 / tau
+                      * (tgtInvVectorH[i] * fATableHoH[i][j] // 2nd term i not depend on D. try to keep first inventory
+                          - SFirmFirmHoH[i][j]); // 3rd term
+        } else if (iOrderTypeFlag == 2) {
+          // ignore negative inventory
+          if ((tgtInvVectorH[i] * fATableHoH[i][j] * DAdjustedFirmVectorH[i]
+              / piniVectorH[i] // 2nd term. target inventory
+              - SFirmFirmHoH[i][j]) <= 0) // 3rd term
+          {
+            // target inventory is negative
+            newOrder =
+                fATableHoH[i][j] * DAdjustedFirmVectorH[i] / piniVectorH[i]; // 1st term
+          } else {
+            // target inventory is positive
+            newOrder =
+                // original
+                fATableHoH[i][j] * DAdjustedFirmVectorH[i] / piniVectorH[i]
+                    // 1st term
+                    + 1 / tau
+                        * (tgtInvVectorH[i] * fATableHoH[i][j] * DAdjustedFirmVectorH[i] / piniVectorH[i]
+                            // 2nd term. target inventory
+                            - SFirmFirmHoH[i][j]); // 3rd term
+          }
+        } else {
+          exit(1);
+        }
+      }
+
+      // if order is minus, set it to zero
+      if (newOrder < 0.0) {
+        newOrder = 0.0;
+      }
+
+      // renewal of order
+      itr2.second = newOrder;
+      bOFirmFirmHoH[j][i] = newOrder;
+    }
+  }
+}
+
+void sim_demand() {
+  // process 5 ==============================================================
+  // renewal of Demand
+  // renewal of DFirmVectorH
+  preDFirmVectorH = DFirmVectorH;
+
+  // demand is reset by cvector out of consideration of terminal nodes
+  // do not reset by zero
+  // use hash
+  for (size_t i = 0; i < firmH.size(); i++) {
+    DFirmVectorH[i] = cVectorH[i];
+  }
+
+  // original paper uses j,i but here uses i,j
+  for (size_t i = 0; i < bOFirmFirmHoH.size(); i++) {
+    // fOrder: client -> supplier
+    // bOrder: supplier -> client
+    // demand is order toward the firm
+    // use bOrder and total client order
+    double totalDemand = 0;
+    for (const auto &itr2 : bOFirmFirmHoH[i]) {
+      totalDemand += itr2.second;
     }
 
-    // process 4 ==============================================================
-    // renewal of Order
-    // fOFirmFirmHoH, bOFirmFirmHoH
-    // Adjusted is later
-    
-    // NB: 'b' means backward and the opposite of 'f'
-    
-    // use hash again
-    hash=&fOFirmFirmHoH;
+    DFirmVectorH[i] += totalDemand;
 
-    // debug
-    //    cerr << "order renewal" << endl;
+    // ignore the error of the doubleing point
+    // without the error causes fluctuation
+    // or introducing gmp (not done)
+    if (abs(preDFirmVectorH[i] - DFirmVectorH[i]) < epsilon) {
+      DFirmVectorH[i] = preDFirmVectorH[i];
+    }
+  }
+}
 
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
+void sim_PAct() {
+  // process 6 ==============================================================
+  // calculate of Pactual
 
-      // itr->first is i
+  // Pcap is decided
+  // first renew Stotal i,s
+  // process 7 is included because it is simple
 
-      // debug
-      //      cerr << "  i: " << itr->first << endl;
+  // clear sector inventory with 0
+  // original paper uses j,i but here uses i,j
+  for (size_t i = 0; i < SFirmSectorHoH.size(); i++) {
+    for (auto &itr2: SFirmSectorHoH[i]) {
+      itr2.second = 0.0;
+    }
+  }
 
-      int i=itr->first;
-
-      for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-	// itr2->first is j
-	// itr2->second is o(i,j)
-	int j=itr2->first;
-      
-	// use Dadjusted
-
-	// debug
-	//	cerr << "    j: " << itr2->first << endl;
-
-	// debug
-	//	cerr << "      pre: " << itr2->second << endl;
-
-	double newOrder;
-
-	// accept pini=0
-
-	// debug
-	//	cerr << "iOrderTypeFrag " << iOrderTypeFrag << endl;
-
-	if(piniVectorH[itr->first]==0){
-
-	  // debug
-	  //	  cerr << "0 pass" << endl;
-	  //	  cerr << piniVectorH[itr->first] << endl;
-
-	  // order=0 is not accepted
-	  // newOrder!=0
-
-	  // order the amount based on fATable
-	  newOrder=(fATableHoH[itr->first])[itr2->first];
-	  // Si,j is constant
-	  // consumption is always equalt to fATable
-
-	}else{
-
-	  if(iOrderTypeFrag==0){
-
-	    // normal order
-	    newOrder=
-	      // original
-	      (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 1st term
-	      + 1 / tau
-	      * ( inventoryN * (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 2nd term target inventory
-		  - (SFirmFirmHoH[itr->first])[itr2->first]); // 3rd term
-
-	  }else if(iOrderTypeFrag==1){
-
-	    // inventory ini keep
-	    newOrder=
-	      (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 1st term
-	      + 1 / tau
-	      * ( inventoryN * (fATableHoH[itr->first])[itr2->first] // 2nd term （not depend on D. try to keep first inventory）
-		  - (SFirmFirmHoH[itr->first])[itr2->first]); // 3rd term
-
-	  }else if(iOrderTypeFrag==2){
-
-	    // ignore negative inventory
-
-	    if((inventoryN * (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 2nd term. target inventory
-		- (SFirmFirmHoH[itr->first])[itr2->first])<=0) // 3rd term
-	      {
-
-		newOrder=
-		  (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first]; // 1st term
-	      }else{
-	    
-	      newOrder=
-		// original
-		(fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first]
-
-		// 1st term
-		
-		+ 1 / tau
-		* ( inventoryN * (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first]
-		    // 2nd term. target inventory
-
-		    - (SFirmFirmHoH[itr->first])[itr2->first]);
-	      // 3rd term
-	    }
-
-	  }else{
-	    exit(1);
-	  }
-
-	  // order boost verstion (not depend on demand）
-	  /*
-	  if((adaptHoL.count(i)!=0) && ((adaptHoL[i])[1]==j)){
-	    // adaptation target: reset it
-
-	    newOrder=
-	      // inventory ini keep
-	      (fATableHoH[itr->first])[itr2->first]  // 1st term D/Pini=1
-	      + 1 / tau
-	      * ( inventoryN * (fATableHoH[itr->first])[itr2->first] // 2nd term （not depend on D. keep initial inventory）
-		  - (SFirmFirmHoH[itr->first])[itr2->first]); // 3rd term
-	    
-	  }else{
-
-	    // nomarl
-	    newOrder=
-
-
-	      // original
-//	      (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 1st term
-//	      + 1 / tau
-//	      * ( inventoryN * (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 2nd term
-//	      - (SFirmFirmHoH[itr->first])[itr2->first]); // 3rd term
-
-	      // inventory ini keep
-	      (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] // 1st term
-	      + 1 / tau
-	      * ( inventoryN * (fATableHoH[itr->first])[itr2->first] // 2nd term (not depend on D. keep initial inventory)
-		  - (SFirmFirmHoH[itr->first])[itr2->first]); // 3rd term
-
-	  }
-	  // order boost version end
-	  
-	  */
-
-	}
-
-	// if order is minus, set it to zero
-	if(newOrder<0){
-	  newOrder=0;
-	}
-
-	// renewal of forder
-	itr2->second = newOrder;
-
-	// debug
-	//	cerr << "newOrder " << newOrder << endl;
-
-	// debug
-// 	if(isnan(newOrder)){
-// 	  cerr << "nan " << itr2->first << " " << itr->first << endl;
-
-//   	  cerr << "border i: " << itr2->first << " j: " << itr->first << " border " << (bOFirmFirmHoH[itr2->first])[itr->first] << " newOrder " << newOrder <<endl;
-// // // 	  // print all
-//   	  cerr << (fATableHoH[itr->first])[itr2->first] << endl;
-//   	  cerr << DAdjustedFirmVectorH[itr->first] << endl;
-//   	  cerr << piniVectorH[itr->first] << endl;
-//   	  cerr << inventoryN / tau << endl;
-//   	  cerr << (SFirmFirmHoH[itr->first])[itr2->first] << endl;
-//  	  cerr << cVectorH[itr->first] << endl;
-
-// 	  exit(1);
-// 	}
-
-	// debug
-// 	if((bOFirmFirmHoH[itr2->first])[itr->first]>newOrder){
-//  	  cerr << "border i: " << itr2->first << " j: " << itr->first << " border " << (bOFirmFirmHoH[itr2->first])[itr->first] << " newOrder " << newOrder <<endl;
-// // 	  // print all
-//  	  cerr << (fATableHoH[itr->first])[itr2->first] << endl;
-//  	  cerr << DAdjustedFirmVectorH[itr->first] << endl;
-//  	  cerr << piniVectorH[itr->first] << endl;
-//  	  cerr << inventoryN / tau << endl;
-//  	  cerr << (SFirmFirmHoH[itr->first])[itr2->first] << endl;
-// 	  cerr << cVectorH[itr->first] << endl;
-//  	}
-
-
-	(bOFirmFirmHoH[itr2->first])[itr->first]=newOrder;
-	
-
-	// debug
-// 	cerr << " 1st term:" << endl;
-// 	cerr << (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] << endl;
-// 	cerr << " 2nd term:" << endl;
-// 	cerr << (fATableHoH[itr->first])[itr2->first] * DAdjustedFirmVectorH[itr->first] / piniVectorH[itr->first] * inventoryN / tau << endl;
-// 	cerr << " 3rd term:" << endl;
-// 	cerr << " - " << (SFirmFirmHoH[itr->first])[itr2->first] / tau << endl;
-
-// 	// debug
-// 	cerr << "      post: " << itr2->second << endl;
-
-      }
+  // Stotal i,s does not require reset because it is set by Atotal i,s
+  // create setor inventory
+  // and create PpropFirmSectorHoH(PsProp)
+#pragma omp parallel for
+  for (size_t i = 0; i < SFirmFirmHoH.size(); i++) {
+    for (const auto &itr2: SFirmFirmHoH[i]) {
+      int j = itr2.first;
+      // itr2->second is S(i,sj)
+      double s = itr2.second;
+      // get sector
+      int sj = firmAffiH[j];
+      SFirmSectorHoH[i][sj] += s;
     }
 
-  // debug
-    //  printHash2LayerIntIntDouble("fOFirmFirmHoH", &fOFirmFirmHoH);
-
-  // debug
-    //  printHash2LayerIntIntDouble("bOFirmFirmHoH", &bOFirmFirmHoH);
-
-    // process 5 ==============================================================
-    // renewal of Demand
-    // renewal of DFirmVectorH
-
-    // debug
-    //    cerr << "demand renewal" << endl;
-
-    // demand is reset by cvector out of consideration of terminal nodes
-    // do not reset by zero
-    // use hash
-    unordered_map<int, int> *hashII;
-    hashII=&firmH;
-    
-    for(auto itr = hashII->begin(); itr != hashII->end(); ++itr) {
-      DFirmVectorH[itr->first]=cVectorH[itr->first];
-    }
-    
-    // use hash
-    hash=&bOFirmFirmHoH;
-
-    // debug
-    //    double diff=0;
-
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-      // debug
-//       if((itr->second).size()==0){
-// 	cerr << "i: " << itr->first << " doesnot have client but border recorded" << endl;
-//       }
-
-      // debug
-      //      cerr << "i: " << itr->first << endl;
-
-      // fOrder: client -> supplier
-      // bOrder: supplier -> client
-      // demand is order toward the firm
-      // use bOrder and total client order
-      double totalDemand=0;
-
-      for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-	// debug
-	//	cerr << "j: " << itr2->first << endl;
-	//	cerr << "volume: " << itr2->second << endl;
-
-	totalDemand=totalDemand+itr2->second;
+    // prop can be calculated because i is know at this moment
+    // for all sector
+    for (const auto &itr2 : SFirmSectorHoH[i]) {
+      const int sj = itr2.first;
+      if (AFirmSectorHoH[i][sj] == 0.0) {
+        cerr << "0 div (AFirmSectorHoH[i])[sj]: " << AFirmSectorHoH[i][sj] << endl;
+        exit(1);
       }
+      PpropFirmSectorHoH[i][sj] = SFirmSectorHoH[i][sj] / AFirmSectorHoH[i][sj] * piniVectorH[i];
+    }
+  }
 
-      // debug
-      //      cerr << totalDemand << endl;
+#pragma omp parallel for
+  for (size_t i = 0; i < firmH.size(); i++) {
+    const auto hash2 = &PpropFirmSectorHoH[i];
 
-      // add C
-      // Order is changed backward, forward
-      // but C is never affected by disaster
-      totalDemand=totalDemand+cVectorH[itr->first];
-
-      // debug
-      //      cerr << totalDemand << endl;
-
-      // debug
-//       if(DFirmVectorH[itr->first]<totalDemand){
-// 	diff = diff + (totalDemand-DFirmVectorH[itr->first]);
-//       }
-
-      DFirmVectorH[itr->first]=totalDemand;
-
-      // debug
-      // 	cerr << "i: " << itr->first << " D " << DFirmVectorH[itr->first] << " totalDemand " << totalDemand << endl;
-      //      if(isnan(totalDemand)){
-      //	exit(1);
-      //      }
-
-      // debug
-      //            cerr << "i " << itr->first << endl;
-      //            cerr << "DFirmVector[i] " << totalDemand << endl;
-
+    // get i's SFirmSectorHoH
+    // if there is none of them, that is beginning node
+    // hash is possibly empty
+    if (hash2->empty()) {
+      PiniMaxVectorH[i] = piniCapVectorH[i];
+      continue;
     }
 
-    // debug
-    //    cerr << "diff " << diff << endl;
+    // the firm i has supplier
 
-    // process 6 ==============================================================
-    // calculate of Pactual
-
-    // Pcap is decided
-
-    // first renew Stotal i,s
-
-    // process 7 is included because it is simple
-
-    // debug
-    //    cerr << "pactual renewal" << endl;
-
-    // clear sector inventory with 0
-    // use hash
-    hash=&SFirmSectorHoH;
-
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-      // itr->first is i
-      int i=itr->first;
-
-      for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-	// itr2->first is sj
-	//	int sj=itr2->first;
-	//	(SFirmSectorHoH[i])[sj]=0;
-
-	itr2->second=0;
-
-      }
-    }
-    
-    // use hash
-    hash=&SFirmFirmHoH;
-
-    // Stotal i,s does not require reset because it is set by Atotal i,s
-
-    // create setor inventory
-    // and create PpropFirmSectorHoH(PsProp)
-
-    for(auto itr = hash->begin(); itr != hash->end(); ++itr) {
-
-      // itr->first is i
-      int i=itr->first;
-
-      for(auto itr2 = (itr->second).begin(); itr2 != (itr->second).end(); ++itr2) {
-
-	// itr2->first is j
-	int j=itr2->first;
-
-	// itr2->second is S(i,sj)
-	double s=itr2->second;
-
-	// get sector
-	int sj=firmAffiH[j];
-
-	(SFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]+s;
-
-      }
-
-      // prop can be calculated because i is know at this moment
-      unordered_map<int, double> *hash2;
-
-      // get i's SFirmSectorHoH
-      hash2=&(SFirmSectorHoH[i]);
-
-      // debug
-      //      cerr << "SFirmSectorHoH[" << i << "]" << endl;
-      //      printHash1LayerIntDouble("SFirmSectorHoH[i]", hash2);
-
-      // for all sector
-      for(auto itr2 = hash2->begin(); itr2 != hash2->end(); ++itr2) {
-	int sj=itr2->first;
-
-	if((AFirmSectorHoH[i])[sj]==0){
-	  cerr << "0 div (AFirmSectorHoH[i])[sj]: " << (AFirmSectorHoH[i])[sj] << endl;
-	  exit(1);
-	}
-
-	// debug
-	//	cerr << "(SFirmSectorHoH[i])[sj] " << (SFirmSectorHoH[i])[sj] << endl;
-	//	cerr << "(AFirmSectorHoH[i])[sj] " << (AFirmSectorHoH[i])[sj] << endl;
-	//	cerr << "piniVectorH[i] " << piniVectorH[i] << endl;
-
-	(PpropFirmSectorHoH[i])[sj]=(SFirmSectorHoH[i])[sj]/(AFirmSectorHoH[i])[sj]*piniVectorH[i];
-
-	// debug
-	//	cerr << "i: " << i << " sj: " << sj << " PpropFirmSectorHoH[i])[sj]: " << (PpropFirmSectorHoH[i])[sj] << endl;
-
-      }
-      
-    }
-    // PpropFirmSectorHoH is calculated at this moment
-
-    // debug
-    //    printHash2LayerIntIntDouble("PropFirmSectorHoH", &PpropFirmSectorHoH);
-    
-
-    // create Pini Max Vector
-    // use hash
-    for(auto itr = firmH.begin(); itr != firmH.end(); ++itr) {
-
-      // debug
-      //            cerr << "i " << itr->first << endl;
-
-      int i=itr->first;
-
-      unordered_map<int, double> *hash2;
-
-      // get i's SFirmSectorHoH
-      // if there is none of them, that is beginning node
-      try{
-	hash2=&(PpropFirmSectorHoH[i]);
-      }
-      catch(const std::out_of_range& oor){
-	// beginning node
-	PiniMaxVectorH[i]=piniCapVectorH[i];
-
-	// debug
-	//	cerr << "caught" << endl;
-	
-	continue;
-      }
-
-      // hash is possibly empty
-      if(hash2->empty()){
-
-	// debug
-	//	cerr << "empty" << endl;
-
-	PiniMaxVectorH[i]=piniCapVectorH[i];
-	continue;
-
-      }
-
-      // debug
-      //      cerr << "no caught" << endl;
-      //      printHash1LayerIntDouble("propfirmsectorhoh[i]", hash2);
-      
-
-      // for all i's sector
-      double minProp;
-      int first=1;
-      for(auto itr2 = hash2->begin(); itr2 != hash2->end(); ++itr2) {
-	if(first==1){
-	  minProp=itr2->second;
-	  first=0;
-	}else{
-	  if(minProp>itr2->second){
-	    minProp=itr2->second;
-	  }
-	}
-      }
-
-      // at this moment, minProp is the mimimum of Pprop
-      
-      if(piniCapVectorH[i]>minProp){
-	PiniMaxVectorH[i]=minProp;
-      }else{
-	PiniMaxVectorH[i]=piniCapVectorH[i];
+    // for all i's sector
+    double minProp = 0.0;
+    int first = 1;
+    for (const auto &itr2 : *hash2) {
+      if (first == 1) {
+        minProp = itr2.second;
+        first = 0;
+      } else {
+        if (minProp > itr2.second) {
+          minProp = itr2.second;
+        }
       }
     }
 
-    // create PactualVectorH
-    // demand is the newest D
+    // at this moment, minProp is the mimimum of Pprop
+    MinPropAmountVectorH[i] = minProp;
+    PiniMaxVectorH[i] = (piniCapVectorH[i] > minProp) ? minProp : piniCapVectorH[i];
+  }
 
-    for(auto itr = firmH.begin(); itr != firmH.end(); ++itr) {
+  // create PactualVectorH
+  // demand is the newest D
+#pragma omp parallel for
+  for (size_t i = 0; i < firmH.size(); i++) {
+    // compare D and set Actual
+    PactualVectorH[i] = (PiniMaxVectorH[i] > DFirmVectorH[i]) ? DFirmVectorH[i] : PiniMaxVectorH[i];
 
-      int i = itr->first;
+    // set Dadjusted
+    DAdjustedFirmVectorH[i] = PactualVectorH[i];
 
-      // debug
-      //      cerr << "i " << i << " PiniMaxVectorH[i] " << PiniMaxVectorH[i] << " DFirmVectorH[i] " << DFirmVectorH[i] << endl;
-      //            cerr << "old PactualVectorH[i] " << PactualVectorH[i] << endl;
+    // ***** rationing begins from here *****
+    // get OrderRatio
+    // mostly, that is 1
+    double adjustRatio;  // [TODO] initialize??
 
-      // compare D and set Actual
-      if(PiniMaxVectorH[i]>DFirmVectorH[i]){
-	PactualVectorH[i]=DFirmVectorH[i];
-      }else{
-	PactualVectorH[i]=PiniMaxVectorH[i];
-      }
-
-      // debug
-      //            cerr << "new PactualVectorH[i] " << PactualVectorH[i] << endl;
-
-      // set Dadjusted
-      DAdjustedFirmVectorH[i]=PactualVectorH[i];
-
-      // debug
-       // if(PactualVectorH[i] < (piniVectorH[i]/2)){
-       // 	 cerr << "firm " << i << "==========" << endl;
-       // 	 printHash1LayerIntDouble("Inventory",&SFirmFirmHoH[i]);
-       // 	 printHash1LayerIntDouble("Order",&fOFirmFirmHoH[i]);
-       // 	 printHash1LayerIntDouble("BOrder(Demand)",&bOFirmFirmHoH[i]);
-       // 	 printHash1LayerIntDouble("Adjusted Order",&fOAdjustedFirmFirmHoH[i]);
-       // 	 cerr << "D " << DFirmVectorH[i] << endl;
-       // 	 cerr << "DAdjusted " << DAdjustedFirmVectorH[i] << endl;
-       // 	 cerr << "pini " << piniVectorH[i] << endl;
-       // 	 cerr << "pact " << PactualVectorH[i] << endl;
-
-       // 	 // int j=350204446;
-       // 	 // cerr << "firm " << j << "==========" << endl;
-       // 	 // printHash1LayerIntDouble("Inventory",&SFirmFirmHoH[j]);
-       // 	 // printHash1LayerIntDouble("Order",&fOFirmFirmHoH[j]);
-       // 	 // printHash1LayerIntDouble("BOrder(Demand)",&bOFirmFirmHoH[j]);
-       // 	 // cerr << "D " << DFirmVectorH[j] << endl;
-       // 	 // cerr << "pini " << piniVectorH[j] << endl;
-       // 	 // cerr << "pact " << PactualVectorH[j] << endl;
-      //       }
-
-
-      // rationing begins from here
-       
-      // get OrderRatio
-      // mostly, that is 1
-      double adjustRatio;
-
-      // OrderとFCのrationing
-
-      if(iRationingTypeFrag==0){
-      
+    // Order  FC  rationing
+    if (iRationingTypeFlag == 0) {
       // this is original paper's rationing
-
       // 0 possibly exists
-      if(DFirmVectorH[i]==0){
-
-	// debug
-	//	cerr << "DFirmVectorH[i]==0 0 div" << endl;
-	//	cerr << "i :" << i << endl;
-	//	exit(1);
-
-	adjustRatio=0;
-      }else{
-	adjustRatio=PactualVectorH[i]/DFirmVectorH[i];
-      }
+      adjustRatio = (DFirmVectorH[i] == 0.0) ? 0.0 : PactualVectorH[i] / DFirmVectorH[i];
 
       // renew C* first
       // cadjusted
-      cAdjustedVectorH[i]=adjustRatio*cVectorH[i];
+      cAdjustedVectorH[i] = adjustRatio * cVectorH[i];
 
       // get i's fOFirmFirmHoH and bOFirmFirmHoH
-      unordered_map<int, double> *hash2;      
-      hash2=&(bOFirmFirmHoH[i]);
-
       // for all i's supplier
-      for(auto itr2 = hash2->begin(); itr2 != hash2->end(); ++itr2) {
-
-	int j=itr2->first;
-
-	// adjusted f
-	(bOAdjustedFirmFirmHoH[i])[j]=itr2->second*adjustRatio;
-
-	// adjusted b
-	(fOAdjustedFirmFirmHoH[j])[i]=itr2->second*adjustRatio;
-
+      for (const auto &itr2 : bOFirmFirmHoH[i]) {
+        const int j = itr2.first;
+        // adjusted f
+        bOAdjustedFirmFirmHoH[i][j] = itr2.second * adjustRatio;
+        // adjusted b
+        fOAdjustedFirmFirmHoH[j][i] = itr2.second * adjustRatio;
+      }
+      // original rationing ends here
+    } else if (iRationingTypeFlag == 1) {
+      // rationing but FC is always considered last
+      double shortD = DFirmVectorH[i] - PactualVectorH[i];
+      double FC = cVectorH[i];
+      if (shortD < 0.0) {
+        shortD = 0.0;
       }
 
-      // original rationing ends here
-      
-      }else if(iRationingTypeFrag==1){
+      if (FC >= shortD) {
+        // FC is enough to fulfill
+        // cadjusted
+        cAdjustedVectorH[i] = FC - shortD;
+        adjustRatio = 1.0;
+      } else {
+        // FC is no enough
+        // rationing occurs
 
-	// rationing but FC is always considered last
+        // cadjusted
+        cAdjustedVectorH[i] = 0.0;
 
-	double shortD=DFirmVectorH[i]-PactualVectorH[i];
-	double FC=cVectorH[i];
-	if(shortD<0){
-	  shortD=0;
-	}
-      
-	if(FC>=shortD){
-	  // FC is enough to fulfill
+        // total amount of order
+        double order = DFirmVectorH[i] - FC;
 
-	  // cadjusted
-	  cAdjustedVectorH[i]=FC-shortD;
+        // there possibly exists 0
+        adjustRatio = (DFirmVectorH[i] == 0) ? 0.0 : PactualVectorH[i] / order;
+      }
 
-	  adjustRatio=1;
+      // get i's fOFirmFirmHoH and bOFirmFirmHoH
+      // for all i's supplier
+      for (const auto &itr2 : bOFirmFirmHoH[i]) {
+        const int j = itr2.first;
+        // adjusted f
+        bOAdjustedFirmFirmHoH[i][j] = itr2.second * adjustRatio;
+        // adjusted b
+        fOAdjustedFirmFirmHoH[j][i] = itr2.second * adjustRatio;
+      }
+      // rationing: fc is last, ends here
+    } else if (iRationingTypeFlag == 2) {
+      // soothing algorithm
+      // inoue & todo 17 uses this algorithm
+      // FC's ratio is not always 1 but cvec / cvecorg
 
-	}else{
-	  // FC is no enough
-	  // rationing occurs
+      // get i's bOFirmFirmHoH
+      const auto bhash = &bOFirmFirmHoH[i];
 
-	  // cadjusted
-	  cAdjustedVectorH[i]=0;
+      // get i's bOIniFirmFirmHoH
+      const auto bshash = &bOIniFirmFirmHoH[i];
 
-	  // total amount of order
-	  double order=DFirmVectorH[i]-FC;
+      // bOrder ratio
+      // bAdjust ratio
+      std::vector<std::pair<int, double>> ini_rat;
+      std::vector<std::pair<int, double>> ini_adjust;
+      for (const auto &itrb : *bhash) {
+        const int j = itrb.first;
+        ini_rat.emplace_back(std::make_pair(j, itrb.second / bshash->find(j)->second));
+        ini_adjust.emplace_back(std::make_pair(j, 0.0));
+      }
+      boost::container::flat_map<int, double> bRatH(ini_rat.cbegin(), ini_rat.cend());
+      boost::container::flat_map<int, double> bAdjustH(ini_adjust.cbegin(), ini_adjust.cend());
 
-	  // there possibly exists 0
-	  if(DFirmVectorH[i]==0){
+      double ratFC;
+      if(iDailyCVector){
+	ratFC= cVectorH[i]/cVectorOrgH[i];
+      }else{
+	ratFC= 1;
+      }
+      double adjustFC = 0.0;
 
-	    // debug
-	    //	cerr << "DFirmVectorH[i]==0 0 div" << endl;
-	    //	cerr << "i :" << i << endl;
-	    //	exit(1);
+      // rationing
+      // remaining act
+      double remainingAct = PactualVectorH[i];
 
-	    adjustRatio=0;
-	  }else{
-	    adjustRatio=PactualVectorH[i]/order;
-	  }
-	}
+      // bRatH, find minimum bOrder's ratio
+      while (1) {
+        double minD = -1.0;
 
-	// get i's fOFirmFirmHoH and bOFirmFirmHoH
-	unordered_map<int, double> *hash2;      
-	hash2=&(bOFirmFirmHoH[i]);
+        for (const auto &itrb : bRatH) {
+          if (almost_equal(itrb.second, 0.0)) {
+            // skip
+            // it is 0
+          } else if (minD < 0) {
+            minD = itrb.second;
+          } else if (minD > itrb.second) {
+            minD = itrb.second;
+          }
+        }
 
-	// for all i's supplier
-	for(auto itr2 = hash2->begin(); itr2 != hash2->end(); ++itr2) {
+        if (almost_equal(ratFC, 0.0)) {
+        } else if (ratFC <= 0.0) {
+        } else if (minD < 0) {
+          minD = ratFC;
+        } else if (minD > ratFC) {
+          minD = ratFC;
+        }
 
-	  int j=itr2->first;
+        // consider minimum
+        if (minD < 0.0 || almost_equal(minD, 0.0)) {
+          break;
+        }
 
-	  // adjusted f
-	  (bOAdjustedFirmFirmHoH[i])[j]=itr2->second*adjustRatio;
+        // how much is required for the fulfillment of minimum ratio
+        double totalMin = 0;
+        for (const auto &itrb : bRatH) {
+          totalMin += minD * bshash->find(itrb.first)->second;
+        }
+        // fc
+        totalMin += minD * cVectorOrgH[i];
 
-	  // adjusted b
-	  (fOAdjustedFirmFirmHoH[j])[i]=itr2->second*adjustRatio;
+        // is it possible to fulfill the minimum
+        if (remainingAct > totalMin) {
+          // add minD to the achieved
+          // and delete from bRatH
 
-	}
-
-	// rationing: fc is last, ends here
-
-      }else if(iRationingTypeFrag==2){
-
-	// soothing algorithm
-	// inoue & todo 17 uses this algorithm
-	// FC's ratio=1
-
-	// get i's bOFirmFirmHoH
-	unordered_map<int, double> *bhash;      
-	bhash=&(bOFirmFirmHoH[i]);
-
-	//	bhash->operator[](-1)=cVectorH[i];
-
-	// get i's bOStartFirmFirmHoH
-	unordered_map<int, double> *bshash;      
-	bshash=&(bOStartFirmFirmHoH[i]);
-
-	//	bshash->operator[](-1)=cVectorH[i];
-
-	// bOrder ratio
-	unordered_map<int, double> bRatH;
-
-	// bAdjust ratio
-	unordered_map<int, double> bAdjustH;
-
-	for(auto itrb = bhash->begin(); itrb != bhash->end(); ++itrb) {
-
-	  unordered_map<int, double>::iterator findI=bshash->find(itrb->first);
-
-	  // debug
-	  // if(findI->second<=0){
-	  //   cerr << "back order <=0" << endl;
-	  //   exit;
-	  // }
-	  
-	  bRatH[itrb->first]=itrb->second/findI->second;
-	  bAdjustH[itrb->first]=0;
-	}
-
-	double ratFC=1;
-	double adjustFC=0;
-
-	// rationing
-
-	// remaining act
-	double remainingAct=PactualVectorH[i];
-
-	// debug
-	//	cerr << "firm " << i << " rationing" << endl;
-	//	cerr << "PactualVectorH[i] " << remainingAct << endl;
-
-	// debug
-	// demand ratio
-	//	cerr << "ratFC: " << ratFC << endl;
-	//	printHash1LayerIntDouble("bRatH", &bRatH);
-
-	// debug
-	//	int counter=0;
-	//	int bOnum=bshash->size();
-
-	// bRatH, find minimum bOrder's ratio
-
-	while(1){
-
-	  // debug
-	  //	  cerr << "remainingAct: " << remainingAct << endl;
-	  //	  counter++;
-// 	  if((bOnum+2)<counter){
-// 	    cerr << "counter over" << endl;
-// 	    cerr << "backorder num " << bOnum << endl;
-// 	    cerr << "counter " << counter << endl;
-// 	    cerr << "i " << i << endl;
-// 	    exit(1);
-// 	  }
-
-//	  int minI; 
-	  double minD=-1;
-
-	  for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-
-	    if(
-#ifdef INTLC
-	       isEqual(itrb->second,(double)0)
-#else
-	       almost_equal(itrb->second,(double)0,2)
-#endif
-	       ){
-	      
-	      // skip
-	      // it is 0
-	    }else if(minD<0){
-
-	      //	      minI=itrb->first;
-	      minD=itrb->second;
-		
-	    }else if(minD>itrb->second){
-	      //	      minI=itrb->first;
-	      minD=itrb->second;
-	    }
+          // record to delete
+          std::vector<int> deleteBRatH;
+          for (auto &itrb : bRatH) {
+            itrb.second -= minD;
+            bAdjustH[itrb.first] += minD;
+            if (itrb.second < 0.0 || almost_equal(itrb.second, 0.0)) {
+              deleteBRatH.emplace_back(itrb.first);
+            }
           }
 
-	  if(minD==-1){
-
-	    if(
-#ifdef INTLC
-	       isEqual(ratFC,(double)0)
-#else
-	       almost_equal(ratFC,(double)0,2)
-#endif
-	       ){
-
-	      break;
-
-	    }
-
-	    //	    minI=-1;
-	    minD=ratFC;
-
-	  }
-
-	  // if demand is fulfilled, end
-	  // consider 10 digit for ratio base=0
-	  if(minD<(double)0.00000000001){
-	    break;
-	  }
-
-	  // consider minimum
-
-	  // how much is required for the fulfillment of minimum ratio
-	  double totalMin=0;
-	  for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-	    unordered_map<int, double>::iterator findI = bshash->find(itrb->first);
-
-	    totalMin=totalMin+minD*findI->second;
-	  }
-	  // fc
-	  totalMin=totalMin+minD*cVectorH[i];
-
-	  // debug
-	  //	  cerr << "totalMin " << totalMin << endl;
-	  //	  cerr << "remainingAct: " << remainingAct << endl;
-
-	  // is it possible to fulfill the minimum
-	  if(remainingAct>totalMin){
-	    // possible
-
-	    // debug
-	    //	    cerr << "remainingAct > totalMin" << endl;
-
-	    // add minD to the achieved
-	    // and delete from bRatH
-	    for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-	      if(itrb->second-minD>=0){
-		itrb->second=itrb->second-minD;
-		bAdjustH[itrb->first]=bAdjustH[itrb->first]+minD;
-	      }
-	    }
-
-	    // fc
-	    ratFC=ratFC-minD;
-	    adjustFC=adjustFC+minD;
-
-	    remainingAct=remainingAct-totalMin;
-
-
-
-
-	  }else{
-	    //  not possible
-
-	    // debug
-	    //	    cerr << "remainingAct <= totalMin" << endl;
-
-	    // find the ratio for all remaining demand that can be fulfilled
-
-	    double vTotal=0;
-	    for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-	      if(itrb->second>0){
-		// bshash
-		unordered_map<int, double>::iterator findI = bshash->find(itrb->first);
-		vTotal=vTotal+findI->second;
-	      }
-	    }
-
-	    // fc
-	    if(ratFC>0){
-	      vTotal=vTotal+cVectorH[i];
-	    }
-
-	    double ratio;
-
-	    if(vTotal<=0){
-
-	      // debug
-	      //cerr << "vTotal <=0" << endl;
-	      //exit(1);
-
-	      ratio=0;
-
-	    }else{
-	      ratio=remainingAct/vTotal;
-	    }
-
-	    // add to fulfilled ratio
-	    for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-	      if(itrb->second>0){
-		bAdjustH[itrb->first]=bAdjustH[itrb->first]+ratio;
-	      }
-	    }
-
-	    if(ratFC>0){
-	      adjustFC=adjustFC+ratio;
-	    }
-
-	    break;
-	  }
-	}
-
-	// debug
-	// fulfilled ratio
-	//	cerr << "fc adjust " << adjustFC << endl;
-	//	printHash1LayerIntDouble("bAdjustH", &bAdjustH);
-
-	// debug
-	//	double realizeVolume=0;
-
-	// activate fulfilled ratio
-
-	// fc
-	cAdjustedVectorH[i]=adjustFC*cVectorH[i];
-
-	// debug
-	//	realizeVolume=realizeVolume+cAdjustedVectorH[i];
-	//	cerr << "realized FC " << cAdjustedVectorH[i] << endl;
-	
-	for(auto itrb = bAdjustH.begin(); itrb != bAdjustH.end(); ++itrb) {
-
-	  int j=itrb->first;
-	  
-	  // inter firm
-	    
-	  // adjusted f
-	  (bOAdjustedFirmFirmHoH[i])[j]=itrb->second*(bOStartFirmFirmHoH[i])[j];
-
-	  // adjusted b
-	  (fOAdjustedFirmFirmHoH[j])[i]=itrb->second*(bOStartFirmFirmHoH[i])[j];
-
-	  // debug
-	  //	  realizeVolume=realizeVolume+itrb->second*(bOStartFirmFirmHoH[i])[j];
-	  //	  cerr << "realized volume to " << j << " : " << itrb->second*(bOStartFirmFirmHoH[i])[j] << endl;
-
-	}
-
-	// debug
-	//	cerr << "realizeVolume " << realizeVolume << endl;
-	
-	// soothing algorithm ends here
-
-      }else if(iRationingTypeFrag==3){
-	
-	// soothing algorithm and considers FC last
-
-	// get i's fOFirmFirmHoH and bOFirmFirmHoH
-	unordered_map<int, double> *bhash;      
-	bhash=&(bOFirmFirmHoH[i]);
-
-	// get i's bOStartFirmFirmHoH
-	unordered_map<int, double> *bshash;      
-	bshash=&(bOStartFirmFirmHoH[i]);
-
-	// bOrder
-	unordered_map<int, double> bRatH;
-
-	// actual fulfill ratio
-	unordered_map<int, double> bAdjustH;
-
-	for(auto itrb = bhash->begin(); itrb != bhash->end(); ++itrb) {
-
-	  unordered_map<int, double>::iterator findI=bshash->find(itrb->first);
-	  
-	  bRatH[itrb->first]=itrb->second/findI->second;
-	  bAdjustH[itrb->first]=0;
-	}	  
-
-	
-	double shortD=DFirmVectorH[i]-PactualVectorH[i];
-	double FC=cVectorH[i];
-	if(shortD<0){
-	  shortD=0;
-	}
-
-	// FC is enough to fulfill demand
-	if(FC>=shortD){
-	  // enough
-
-	  // cadjusted
-	  cAdjustedVectorH[i]=FC-shortD;
-
-	  // activate
-	  bAdjustH=bRatH;
-
-	}else{
-	  // not enough
-	  // rationing
-
-	  // cadjusted
-	  cAdjustedVectorH[i]=0;
-
-	  // total amount of order
-	  //double order=DFirmVectorH[i]-FC;
-
-	  // remaining act
-	  double remainingAct=PactualVectorH[i];
-
-	  // debug
-	  //	   int counter=0;
-	  //	    int bOnum=bshash->size();
-
-	  while(1){
-
-	    // debug
-// 	    counter++;
-// 	     if(bOnum<counter){
-// 	       cerr << "counter over" << endl;
-// 	       cerr << "backorder num " << bOnum << endl;
-// 	       cerr << "counter " << counter << endl;
-// 	       cerr << "i " << i << endl;
-// 	     }
-
-//	    int minI; 
-	    double minD=-1;
-
-	    //debug
-// 	    if(i==842021116){
-// 	      	    cerr << "remainingAct " << remainingAct << endl;
-// 		    printHash1LayerIntDouble("bRatH", &bRatH);
-// 	    }
-
-	    for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-
-#ifdef INTLC
-	      if(isEqual(itrb->second,(double)0)){
-#else
-	      if(almost_equal(itrb->second,(double)0,2)){
-#endif
-		// skip
-		// it is 0
-	      }else if(minD<0){
-
-		//		minI=itrb->first;
-		minD=itrb->second;
-		
-	      }else if(minD>itrb->second){
-		//	minI=itrb->first;
-		minD=itrb->second;
-	      }
-	    }
-
-	    if(minD==-1){
-	      break;
-	    }
-
-	    // minimum is obtained
-
-	    // how much is necessary to fulfill the minimum ratio
-	    double totalMin=0;
-	    for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-	      unordered_map<int, double>::iterator findI = bshash->find(itrb->first);
-
-	      totalMin=totalMin+minD*findI->second;
-	    }
-
-	    // is it possible to fulfill the minimum
-	    if(remainingAct>totalMin){
-	      // possible
-
-	      // add minD as activation
-	      // remove from bRatH
-	      for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-		if(itrb->second-minD>=0){
-		  itrb->second=itrb->second-minD;
-		  bAdjustH[itrb->first]=bAdjustH[itrb->first]+minD;
-		}
-	      }
-
-	      remainingAct=remainingAct-totalMin;
-	      
-	    }else{
-	      // no possible
-
-	      // find the ratio for all remaining demand that can be fulfilled
-
-	      double vTotal=0;
-	      for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-		if(itrb->second>0){
-		// bshash
-		  unordered_map<int, double>::iterator findI = bshash->find(itrb->first);
-		  vTotal=vTotal+findI->second;
-		}
-	      }
-
-	      double ratio=remainingAct/vTotal;
-
-	      // add to fulfilled ratio
-	      for(auto itrb = bRatH.begin(); itrb != bRatH.end(); ++itrb) {
-		if(itrb->second>0){
-		  bAdjustH[itrb->first]=bAdjustH[itrb->first]+ratio;
-		}
-	      }
-
-	      break;
-	    }
-	      
-	  }
-
-	}
-
-	// debug
-	// fulfilled ratio
-	//	printHash1LayerIntDouble("bAdjustH", &bAdjustH);
-
-	// activate fulfilled ratio
-	for(auto itrb = bAdjustH.begin(); itrb != bAdjustH.end(); ++itrb) {
-	  int j=itrb->first;
-
-	  // adjusted f
-	  (bOAdjustedFirmFirmHoH[i])[j]=itrb->second*(bOStartFirmFirmHoH[i])[j];
-
-	  // adjusted b
-	  (fOAdjustedFirmFirmHoH[j])[i]=itrb->second*(bOStartFirmFirmHoH[i])[j];
-	}
-	
-	// soothing algorithm with FC last
-
-
-	}else{
-	exit(1);
+          for (const auto &i : deleteBRatH) {
+            bRatH.erase(i);
+          }
+
+          // fc
+          if (ratFC > 0) {
+            ratFC -= minD;
+            adjustFC += minD;
+
+            if (ratFC < 0.0 || almost_equal(ratFC, 0.0)) {
+              ratFC = 0.0;
+            }
+          }
+
+          remainingAct -= totalMin;
+
+          if (bRatH.empty() && almost_equal(ratFC, 0.0)) {
+            break;
+          }
+          if (remainingAct < 0 || almost_equal(remainingAct, 0.0)) {
+            break;
+          }
+        } else {
+          // find the ratio for all remaining demand that can be fulfilled
+          double vTotal = 0.0;
+          for (const auto &itrb : bRatH) {
+            if (itrb.second > 0.0) {
+              vTotal += bshash->find(itrb.first)->second;  // [TODO] what if findI is end??
+            }
+          }
+
+          // fc
+          if (ratFC > 0) {
+            vTotal += cVectorOrgH[i];
+          }
+
+          const double ratio = (vTotal <= 0) ? 0.0 : remainingAct / vTotal;
+
+          // add to fulfilled ratio
+          for (const auto &itrb : bRatH) {
+            if (itrb.second > 0.0) {
+              bAdjustH[itrb.first] += ratio;
+            }
+          }
+          if (ratFC > 0.0) {
+            adjustFC += ratio;
+          }
+          break;
+        }
       }
 
-    }
-
-    // debug
-    //    printAllInternal();
-    // for(int i=1;i<=3;i++){
-    //   cerr << "firm " << i << "==========" << endl;
-    //   printHash1LayerIntDouble("Inventory",&SFirmFirmHoH[i]);
-    //   printHash1LayerIntDouble("Order",&fOFirmFirmHoH[i]);
-    //   printHash1LayerIntDouble("Adjusted Order",&fOAdjustedFirmFirmHoH[i]);
-    //   printHash1LayerIntDouble("BOrder(Demand)",&bOFirmFirmHoH[i]);
-    //   printHash1LayerIntDouble("Adjusted BOrder(Demand)",&bOAdjustedFirmFirmHoH[i]);
-    //   cerr << "D " << DFirmVectorH[i] << endl;
-    //   cerr << "DAdjusted " << DAdjustedFirmVectorH[i] << endl;
-    //   cerr << "pini " << piniVectorH[i] << endl;
-    //   cerr << "pact " << PactualVectorH[i] << endl;
-    // }
-
-    // output 
-    // for every turn
-//     unordered_map<int, double> *hashO;
-//     hashO=&PactualVectorH;
-//     map<int, int> sortedVectorH(hashO->begin(), hashO->end());
-//     for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-//       // show keys values
-//       // i, actual P
-//       ofs << t << " " << itr->first << " " << itr->second << endl;
-//     }
-
-    // output pactual
-    // for every turn
-    // double totalPactual=0;
-    // for(auto itr = PactualVectorH.begin(); itr != PactualVectorH.end(); ++itr) {
-    //   totalPactual=totalPactual+itr->second;
-    // }
-    // lastTotalPactual=totalPactual;
-    // ofs << t << " " << totalPactual << endl;
-
-    // output value added
-    double totalValueAdded=0;
-    double totalPactual=0;
-    for(auto itr = PactualVectorH.begin(); itr != PactualVectorH.end(); ++itr) {
-      totalPactual=totalPactual+itr->second;
-      totalValueAdded=totalValueAdded+valueAddedVectorH[itr->first]*itr->second;
-    }
-    lastTotalPactual=totalPactual;
-    lastTotalValueAdded=totalValueAdded;
-
-    // value added
-    ofs << t << " " << totalPactual << endl;
-    pvfs << t << " " << totalValueAdded << endl;
-
-    // output final consumption
-    if(fcOfs){
-      double totalFC=0;
-      for(auto itr = cAdjustedVectorH.begin(); itr != cAdjustedVectorH.end(); ++itr) {
-	totalFC=totalFC+itr->second;
+      cAdjustedVectorH[i] = adjustFC * cVectorOrgH[i];
+      for (const auto &itrb : bAdjustH) {
+        const int j = itrb.first;
+        // adjusted f
+        bOAdjustedFirmFirmHoH[i][j] = itrb.second * bOIniFirmFirmHoH[i][j];
+        // adjusted b
+        fOAdjustedFirmFirmHoH[j][i] = itrb.second * bOIniFirmFirmHoH[i][j];
       }
-      fcOfs << t << " " << totalFC << endl;
-    }
+    } else if (iRationingTypeFlag == 3) {
+      // soothing algorithm and considers FC last
 
-    // debug
-    if(iFullDebugFrag){
-      fullDebug(t);
-    }
+      // get i's bOFirmFirmHoH
+      auto *bhash = &bOFirmFirmHoH[i];
+      // get i's bOIniFirmFirmHoH
+      auto *bshash = &bOIniFirmFirmHoH[i];
+      // bOrder ratio
+      unordered_map<int, double> bRatH;
+      // bAdjust ratio
+      unordered_map<int, double> bAdjustH;
 
-    // output snapshot
-    unordered_map<int, int>::iterator findI;
-    findI = hPrintSnapStep.find(t);
-
-
-    if(findI == hPrintSnapStep.end()){
-      // not found
-    }else{
-
-      // found
-      string sFile=sPrintSnapFileBase;
-
-#if defined(INTLC) || defined(KEI)
-      char buf[256];
-      sprintf(buf, "%d", t);
-      sFile=sFile+buf;
-#else
-      sFile=sFile+to_string(t);
-#endif
-
-      ofstream snapOfs;
-
-      snapOfs.open(sFile.c_str());
-
-      if(!snapOfs){
-	cerr << "Unable to open " << sFile << " as snap output file at step " << t << endl;
-	exit(1);
+      for (const auto &itrb : *bhash) {
+        bRatH[itrb.first] = itrb.second / bshash->find(itrb.first)->second;
+        bAdjustH[itrb.first] = 0.0;
       }
 
+      // consider fc here
+      double FC = cVectorH[i];
+      double dDwithoutFC = DFirmVectorH[i] - FC;
+      double dMarginActual = PactualVectorH[i] - dDwithoutFC;
 
-      unordered_map<int, double> *hashO;
-      hashO=&PactualVectorH;
-      map<int, double> sortedVectorH(hashO->begin(), hashO->end());
+      if (dMarginActual <= 0.0) {
+        cAdjustedVectorH[i] = 0.0;
+      } else if (dMarginActual > 0.0 && dMarginActual < FC) {
+        cAdjustedVectorH[i] = dMarginActual;
+      } else {
+        cAdjustedVectorH[i] = FC;
+      }
+
+      double ratFC = 0.0;
+      double adjustFC = 0.0;
+
+      // rationing
+      // remaining act
+      double remainingAct = PactualVectorH[i] - cAdjustedVectorH[i];
+
+      // bRatH, find minimum bOrder's ratio
+
+      while (1) {
+        //	  int minI;
+        double minD = -1.0;
+        for (const auto &itrb : bRatH) {
+          if (almost_equal(itrb.second, 0.0)) {
+          } else if (minD < 0.0) {
+            minD = itrb.second;
+          } else if (minD > itrb.second) {
+            minD = itrb.second;
+          }
+        }
+        // consider minimum
+        if (minD < 0.0 || almost_equal(minD, 0.0)) {
+          break;
+        }
+
+        // how much is required for the fulfillment of minimum ratio
+        double totalMin = 0.0;
+        for (const auto &itrb : bRatH) {
+          totalMin += minD * bOIniFirmFirmHoH[i].find(itrb.first)->second;
+        }
+
+        // is it possible to fulfill the minimum
+        if (remainingAct > totalMin) {
+          // possible
+          // add minD to the achieved
+          // and delete from bRatH
+
+          // record to delete
+          unordered_map<int, int> deleteBRatH;
+          for (auto &itrb : bRatH) {
+            itrb.second -= minD;
+            bAdjustH[itrb.first] += minD;
+            if (itrb.second < 0.0 || almost_equal(itrb.second, 0.0)) {
+              deleteBRatH[itrb.first] = 1;
+            }
+          }
+
+          for (const auto &itrb : deleteBRatH) {
+            bRatH.erase(itrb.first);
+          }
+
+          remainingAct -= totalMin;
+
+          if (bRatH.empty()) {
+            break;
+          }
+          if (remainingAct < 0 || almost_equal(remainingAct, 0.0)) {
+            break;
+          }
+        } else {
+          //  not possible
+          //  or equal
+
+          // find the ratio for all remaining demand that can be fulfilled
+          double vTotal = 0.0;
+          for (const auto &itrb : bRatH) {
+            if (itrb.second > 0.0) {
+              vTotal += bOIniFirmFirmHoH[i].find(itrb.first)->second;
+            }
+          }
+
+          const double ratio = (vTotal <= 0) ? 0.0 : remainingAct / vTotal;
+
+          // add to fulfilled ratio
+          for (const auto &itrb : bRatH) {
+            if (itrb.second > 0) {
+              bAdjustH[itrb.first] += ratio;
+            }
+          }
+
+          break;
+        }
+      }
+
+      for (const auto &itrb : bAdjustH) {
+        const int j = itrb.first;
+        // adjusted f
+        bOAdjustedFirmFirmHoH[i][j] = itrb.second * bOIniFirmFirmHoH[i][j];
+        // adjusted b
+        fOAdjustedFirmFirmHoH[j][i] = itrb.second * bOIniFirmFirmHoH[i][j];
+      }
+    } else {
+      exit(1);
+    }
+  }
+}
+
+
+
+void sim_predefinedDelta(int t) {
+
+  // predefine check
+  // note that predefine is ignored in the recovery
+
+  for (auto &itr : predefinedHoL) {
+
+    int id = itr.first;
+    auto &predefineL = itr.second;
+
+    std::vector<int> eraseIndex;
+
+    if(predefineL.size()==0){
+
+      DeltaVectorH[id]=0;
+      piniCapVectorH[id] = piniVectorH[id];
       
-      for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-	snapOfs << itr->first << " " << itr->second << endl;;
+    }else{
+      for (int i=0;i<predefineL.size();i++){
+	int sdate=predefineL[i].GetS();
+	int edate=predefineL[i].GetE();
+	double delta=predefineL[i].GetD();
+
+	if(sdate<=t && t<=edate){
+	  DeltaVectorH[id] = delta;
+	  piniCapVectorH[id] = (1.0 - DeltaVectorH[id]) * piniVectorH[id];
+	}
+
+	if(t>=edate){
+	  eraseIndex.push_back(i);
+	}
       }
 
+      // erase reversely
+      for(int i=(eraseIndex.size()-1);i>=0;i--){
+	predefineL.erase(predefineL.begin()+eraseIndex[i]);
+      }
+    }
+  }
+
+}
+
+void sim_dailyCVector(int t, const firm_index_t &firm_index){
+
+  // daily cvector
+  // if it is empty, it is not considered
+  // only when it has value, the values rewrite the cvector TENTATIVELY
+
+  if(iDailyCVector==0){
+    // no daily delta
+    return;
+  }else{
+    // daily delta on
+
+      auto found = dailyCVectorDayH.find(t);
+      if (found == dailyCVectorDayH.end()) {
+
+	// t not found
+	cVectorH=cVectorOrgH;
+	return;
+
+      }
+
+      // t found
+      std::string ts = std::to_string( t );
+      string dailyCVectorFileT = sDailyCVectorFileBase + ts + ".txt";
+
+      cVectorH=cVectorOrgH;
+
+      // debug
+      //      cerr << dailyCVectorFileT << endl;
+      
+      //dailycvectorfile
+      std::ifstream ifsCVec(dailyCVectorFileT);
+      if (!ifsCVec) { throw std::runtime_error("failed to open dailyCVectorFile"); }
+      while (!ifsCVec.eof()) {
+	std::string sx0;
+	double x1;
+	ifsCVec >> sx0 >> x1;
+	if (sx0.empty()) continue;
+	auto found = firm_index.find(sx0);
+	if (found != firm_index.end()) {
+	  const int x0 = found->second;
+	  cVectorH[x0] = x1;
+
+	  //	  cerr << sx0 << " found as " << x0 << endl;
+	  
+	}else{
+	  //	  cerr << sx0 << " not found" << endl;
+	}
+      }
+
+  }
+}
+
+void sim_recovery(int t) {
+  if (iRecoveryType == -1 || iRecoveryType == 0 || iRecoveryType == 1
+      || iRecoveryType == 2 || iRecoveryType == 3 || iRecoveryType == 4 || iRecoveryType == 5) {
+
+    for (size_t i = 0; i < DeltaVectorH.size(); i++) {
+
+      if (DeltaVectorH[i] > 0) {
+
+	// forcibly stop day
+	if ( (t - DeltaStartVectorH[i]) >= iForceStopDay) {
+	    
+	  if (iRecoveryType == -1 || iRecoveryType == 0) {
+	    // proportional
+	    DeltaVectorH[i] -= recoveryStepH[i];
+	  } else if (iRecoveryType == 1) {
+	    // uniform
+	    DeltaVectorH[i] -= 1.0 / iRecoveryDay;
+	  } else if (iRecoveryType == 2) {
+	    // suddenly recover
+	    DeltaVectorH[i] = 0.0;
+	    piniCapVectorH[i] = (1.0 - DeltaVectorH[i]) * piniVectorH[i];
+	  } else if (iRecoveryType == 3) {
+	    // renewal equation
+	    double beta = 1.0 / recoveryStepH[i];
+	    DeltaVectorH[i] *= (1.0 - beta);
+	  } else if (iRecoveryType == 4) {
+	    // exponential
+	    DeltaVectorH[i] = hiddenDeltaVectorH[i] * exp(-(double) t / iRecoveryDay);
+	  } else if (iRecoveryType == 5) {
+	    // damped renewal equation
+	    // forward
+	    int degree = 0;
+	    double deltaSum = 0.0;
+	    degree += fOFirmFirmHoH[i].size();
+	    for (const auto &itr : fOFirmFirmHoH[i]) {
+	      deltaSum += DeltaVectorH[itr.first];
+	    }
+	    // backward
+	    degree += bOFirmFirmHoH[i].size();
+	    for (const auto &itr : bOFirmFirmHoH[i]) {
+	      deltaSum += DeltaVectorH[itr.first];
+	    }
+	    const double h = (degree == 0) ? 1.0 : 1.0 - deltaSum / degree;
+	    if (h != 0) {
+	      // damping factor
+	      double beta = 1.0 / iRecoveryDay;
+	      beta *= h;
+	      DeltaVectorH[i] *= (1.0 - beta);
+	    }
+	  }
+
+	  if (DeltaVectorH[i] < 0.0) {
+	    DeltaVectorH[i] = 0.0;
+	  }
+	  piniCapVectorH[i] = (1.0 - DeltaVectorH[i]) * piniVectorH[i];
+	}
+      }
+    }
+  }
+}
+
+void sim_PrintOut(int t,
+                  std::ofstream &pactOfs,
+                  std::ofstream &pvalueOfs,
+                  std::ofstream &fcOfs,
+                  std::ofstream &dlossOfs,
+                  std::ofstream &debugOfs,
+                  std::vector<std::ofstream> &selectOutPActL,
+                  std::vector<std::ofstream> &selectOutVAL) {
+  // output value added
+  double totalValueAdded = 0.0;
+  double totalPactual = 0.0;
+  for (size_t i = 0; i < PactualVectorH.size(); i++) {
+    totalPactual += PactualVectorH[i];
+    totalValueAdded += valueAddedVectorH[i] * PactualVectorH[i];
+  }
+  lastTotalPactual = totalPactual;
+  lastTotalValueAdded = totalValueAdded;
+
+  // pact
+  if(!iPActSupFlag){
+    pactOfs << t << " " << totalPactual << endl;
+  }
+  // value added
+  pvalueOfs << t << " " << setprecision(17) << totalValueAdded << endl;
+
+  // selective
+  if (iSelectiveOutput) {
+    for (int i = 0; i < selectOutPActL.size(); i++) {
+
+      double totalPactual = 0.0;
+      double totalVA = 0.0;
+      for (auto j : selectiveOutputLoH[i]) {
+        int id = j.first;
+        totalPactual += PactualVectorH[id];
+        totalVA += valueAddedVectorH[id] * PactualVectorH[id];
+      }
+
+      // disaster happens at 0, so as a pre-disaster, t=-1 is output
+      selectOutPActL[i] << t << " " << setprecision(17) << totalPactual << endl;
+      selectOutVAL[i] << t << " " << setprecision(17) << totalVA << endl;
+
+    }
+  }
+
+
+  // output final consumption
+  if (fcOfs) {
+    double totalFC = 0.0;
+    for (double x: cAdjustedVectorH) {
+      totalFC += x;
+    }
+    fcOfs << t << " " << setprecision(17) << totalFC << endl;
+  }
+
+  // for debug
+  //  if (iFullDebugFlag) {
+  //    fullDebug(t, debugOfs);
+  //  }
+
+  // total direct production loss
+  if (dlossOfs) {
+    printTotalDirectProductionLoss(t, dlossOfs);
+  }
+}
+
+void sim_setDelta(int t) {
+  
+  // input damage
+  for (size_t i = 0; i < piniVectorH.size(); i++) {
+    if (DeltaReserveVectorH[i]>=0) {
+      // defined
+
+      if(DeltaStartVectorH[i]==t){
+	// at t
+
+	DeltaVectorH[i]=DeltaReserveVectorH[i];
+	
+	// pinicapvector is used instead of pinivector because piniCapVector might have over production
+	piniCapVectorH[i] = piniVectorH[i] * (1.0 - DeltaVectorH[i]);
+
+
+      }
     }
 
+  }
+}
 
-  } // for t, simulation step 
+void simulation(int simulationStep,
+                std::ofstream &pactOfs,
+                std::ofstream &pvalueOfs,
+                std::ofstream &fcOfs,
+                std::ofstream &statsOfs,
+                std::ofstream &dlossOfs,
+                std::ofstream &debugOfs,
+                std::vector<std::ofstream> &selectOutPActL,
+                std::vector<std::ofstream> &selectOutVAL,
+		const firm_index_t &firm_index){
+  // simulation start
+  // all variables are already initialized
+  for (int t = 0; t < simulationStep; t++) {
+    std::stringstream ss;
+
+    ss << "time: " << t << std::endl;
+    muteSwitchedCerr(ss.str());
+
+    MeasureElapsed("sim_predefinedDelta", [&] {
+      sim_predefinedDelta(t);
+    });
+
+    MeasureElapsed("sim_setDelta", [&] {
+      sim_setDelta(t);
+    });
+
+    MeasureElapsed("sim_dailyCVector", [&] {
+      sim_dailyCVector(t, firm_index);
+    });
+    
+    MeasureElapsed("sim_inventoryRenewal", [&] {
+      sim_inventoryRenewal();
+    });
+
+    MeasureElapsed("sim_order", [&] {
+      sim_order();
+    });
+
+    MeasureElapsed("sim_demand", [&] {
+      sim_demand();
+    });
+
+    MeasureElapsed("sim_PAct", [&] {
+      sim_PAct();
+    });
+
+    MeasureElapsed("sim_PrintOut", [&] {
+      sim_PrintOut(t, pactOfs, pvalueOfs, fcOfs, dlossOfs, debugOfs, selectOutPActL, selectOutVAL);
+    });
+
+    MeasureElapsed("sim_recovery", [&] {
+      sim_recovery(t);
+    });
+
+    MeasureElapsed("printSnapshot", [&] {
+      printSnapshot(t);
+    });
+  } // for t, simulation step
 
   // output stat
-  if(stOfs){
-        stOfs << "totalPactutalEnd " << lastTotalPactual << endl;
-        stOfs << "totalValueAddedEnd " << lastTotalValueAdded << endl;
+  if (statsOfs) {
+    statsOfs << "totalPactutalEnd " << setprecision(17) << lastTotalPactual
+             << endl;  // [TODO] stop writing duplicate values
+    statsOfs << "totalValueAddedEnd " << setprecision(17) << lastTotalValueAdded << endl;
   }
 
-  // output adaptation
-  if(adapOfs){
-    for(auto itr =iAdaptDoneH.begin(); itr != iAdaptDoneH.end(); ++itr) {
-      adapOfs << itr->first << " " << itr->second << endl;
-    }
-  }
-  
 }
 
 vector<string> split(const string &s, char delim) {
@@ -2698,19 +1575,323 @@ vector<string> split(const string &s, char delim) {
   string item;
   while (getline(ss, item, delim)) {
     if (!item.empty()) {
-       elems.push_back(item);
+      elems.push_back(item);
     }
   }
   return elems;
 }
 
-int main(int argc, char *argv[]){
+void OpenOutputStreams(const std::string &pactOutputFile,
+                       const std::string &pValueAddedOutputFile,
+                       const std::string &finalConsumerOutputFile,
+                       const std::string &statsOutputFile,
+                       const std::string &directLossOutputFile,
+                       const std::vector<std::string> &selectOutInStrL,
+                       std::ofstream &pactOfs,
+                       std::ofstream &pvOfs,
+                       std::ofstream &fcOfs,
+                       std::ofstream &statsOfs,
+                       std::ofstream &dlossOfs,
+                       std::vector<std::ofstream> &selectOutPActL,
+                       std::vector<std::ofstream> &selectOutVAL
+) {
 
-  // rand seed
-  int randSeed=331;
+  if(!iPActSupFlag){
+    if (!pactOutputFile.empty()) {
+      pactOfs.open(pactOutputFile);
+      if (!pactOfs) {
+	throw std::runtime_error("unable to open pactOutputFile");
+      }
+    }
+  }
+
+  if (!pValueAddedOutputFile.empty()) {
+    pvOfs.open(pValueAddedOutputFile);
+    if (!pvOfs) {
+      throw std::runtime_error("unable to open pValueAddedOutputFile");
+    }
+  }
+
+  if (!finalConsumerOutputFile.empty()) {
+    fcOfs.open(finalConsumerOutputFile);
+    if (!fcOfs) {
+      throw std::runtime_error("unable to open finalConsumerOutputFile");
+    }
+  }
+
+  if (!statsOutputFile.empty()) {
+    statsOfs.open(statsOutputFile);
+    if (!statsOfs) {
+      throw std::runtime_error("unable to open statsOutputFile");
+    }
+  }
+
+  if (!directLossOutputFile.empty()) {
+    dlossOfs.open(directLossOutputFile);
+    if (!dlossOfs) {
+      throw std::runtime_error("unable to open directLossOutputFile");
+    }
+  }
+
+  std::vector<string> selectOutPActStrL;
+  std::vector<string> selectOutVAStrL;
+
+  selectOutPActL.resize(selectOutInStrL.size());
+  selectOutVAL.resize(selectOutInStrL.size());
+
+  // rename input file name to output file name and open output file stream
+  for (int i = 0; i < selectOutInStrL.size(); i++) {
+    char pact_name[255] = {'\0'};
+    sprintf(pact_name, "Selective_PAct_%02d.txt", i);
+    selectOutPActL[i].open(pact_name);
+    if (!selectOutPActL[i]) {
+      cerr << "Unable to open " << pact_name << " as selective output file" << endl;
+      exit(0);
+    }
+
+    char va_name[255] = {'\0'};
+    sprintf(va_name, "Selective_VA_%02d.txt", i);
+    selectOutVAL[i].open(va_name);
+    if (!selectOutVAL[i]) {
+      cerr << "Unable to open " << va_name << " as selective output file" << endl;
+      exit(0);
+    }
+  }
+}
+
+void ResizeAll() {
+  assert(NUM_NODES > 0);
+  // resize all
+  fATableHoH.resize(NUM_NODES);
+  cVectorH.resize(NUM_NODES, 0.0);
+  piniVectorH.resize(NUM_NODES, 0.0);
+  piniInputVectorH.resize(NUM_NODES, 0.0);
+  valueAddedVectorH.resize(NUM_NODES, 0.0);
+  firmAffiH.resize(NUM_NODES, 0);
+  firmH.resize(NUM_NODES, 0);
+  fOFirmFirmHoH.resize(NUM_NODES);
+  fOAdjustedFirmFirmHoH.resize(NUM_NODES);
+  bOFirmFirmHoH.resize(NUM_NODES);
+  bOIniFirmFirmHoH.resize(NUM_NODES);
+  bOAdjustedFirmFirmHoH.resize(NUM_NODES);
+  DFirmVectorH.resize(NUM_NODES, 0.0);
+  preDFirmVectorH.resize(NUM_NODES, 0.0);
+  DAdjustedFirmVectorH.resize(NUM_NODES, 0.0);
+  cAdjustedVectorH.resize(NUM_NODES, 0.0);
+  piniCapVectorH.resize(NUM_NODES, 0.0);
+  SFirmFirmHoH.resize(NUM_NODES);
+  SFirmSectorHoH.resize(NUM_NODES);
+  AFirmSectorHoH.resize(NUM_NODES);
+  PpropFirmSectorHoH.resize(NUM_NODES);
+  PiniMaxVectorH.resize(NUM_NODES, 0.0);
+  MinPropAmountVectorH.resize(NUM_NODES, 0.0);
+  PactualVectorH.resize(NUM_NODES, 0.0);
+  DeltaVectorH.resize(NUM_NODES, 0.0);
+  DeltaReserveVectorH.resize(NUM_NODES, -1);  
+  DeltaStartVectorH.resize(NUM_NODES, 0.0);
+  tgtInvVectorH.resize(NUM_NODES, 0.0);
+  recoveryStepH.resize(NUM_NODES, 0.0);
+  hiddenDeltaVectorH.resize(NUM_NODES, 0.0);
+
+  // now it is meaningless
+  firmH.resize(NUM_NODES);
+  for (int i = 0; i < firmH.size(); i++) {
+    firmH[i] = i;
+  }
+}
+
+void ReadAtable(const std::string &ioLineFile,  const firm_index_t &firm_index) {
+
+  ifstream ifs(ioLineFile);
+  if (!ifs) {
+    throw std::runtime_error(std::string("unable to open ") + ioLineFile);
+  }
+
+  std::unordered_map<int, std::vector<std::pair<int, double>>> vLinks;
+  while (!ifs.eof()) {
+    std::string x0, x1;
+    double w;
+    ifs >> x0 >> x1 >> w;
+    if (x0.empty()) continue;
+    if (firm_index.find(x0) == firm_index.end()) { continue; }
+    int i0 = firm_index.at(x0);
+    if (firm_index.find(x1) == firm_index.end()) { continue; }
+    int i1 = firm_index.at(x1);
+
+    vLinks[i1].push_back(std::make_pair(i0, w));
+  }
+
+  for (const auto &vi : vLinks) {
+    const size_t i = vi.first;
+    fATableHoH[i].insert(vi.second.cbegin(), vi.second.cend());
+  }
+
+}
+
+void ReadCVector(const std::string &cVectorFile, const firm_index_t &firm_index) {
+  ifstream ifs2(cVectorFile);
+  if (!ifs2) {
+    throw std::runtime_error("unable to open cVectorFile");
+  }
+  while (!ifs2.eof()) {
+    std::string s0;
+    double c;
+    ifs2 >> s0 >> c;
+    if (s0.empty()) continue;
+    int x0 = firm_index.at(s0);
+    cVectorH[x0] = c;
+  }
+}
+
+void ReadPiniVector(const std::string &PiniVectorFile, const firm_index_t &firm_index) {
 
   // debug
-  //  cout << relFileS << endl;
+  //  cerr << PiniVectorFile << endl;
+
+  ifstream ifs3(PiniVectorFile);
+  if (!ifs3) {
+    throw std::runtime_error("unable to open PiniVectorFile");
+  }
+  while (!ifs3.eof()) {
+    std::string s0;
+    double pini;
+    ifs3 >> s0 >> pini;
+    if (s0.empty()) continue;
+
+    // debug
+    //    cerr << s0 << endl;
+    
+    int x0 = firm_index.at(s0);
+    piniVectorH[x0] = pini;
+  }
+}
+
+firm_index_t ReadFirmAffiliationFile(const std::string &firmAffiFile) {
+  
+  ifstream ifs4(firmAffiFile);
+  if (!ifs4) {
+    throw std::runtime_error("unable to open firmAffiFile");
+  }
+
+  int idx = 0;
+  firm_index_t firm_index;
+  unordered_map<int, int> tempIndexFirmH;
+  while (!ifs4.eof()) {
+    std::string sfirm;
+    int sector;
+    string x2;
+    ifs4 >> sfirm >> sector >> x2;
+
+    // debug
+    //    cout << "sfirm " << sfirm << " sector " << sector << " sales " << x2 << endl;
+
+    if (sfirm.empty()) continue;
+    const auto found0 = firm_index.insert(std::make_pair(sfirm, idx));
+    if (found0.second) { idx++; }
+
+    int i0 = firm_index[sfirm];
+    rev_firm_index[i0]=sfirm;
+
+    tempIndexFirmH[i0]=sector;
+
+    if (secFirmHoL.find(sector) == secFirmHoL.end()) {
+      secFirmHoL[sector].clear();
+    }
+    secFirmHoL[sector].push_back(i0);
+  }
+  
+  NUM_NODES = idx;
+
+  ResizeAll();
+
+  for(int i=0;i<NUM_NODES;i++){
+    int sector=tempIndexFirmH[i];
+    firmAffiH[i] = sector;
+  }
+  
+  return std::move(firm_index);
+}
+
+void ReadSelectiveOutputFile(const std::vector<string> &selectOutInStrL, const firm_index_t &firm_index) {
+
+  selectiveOutputLoH.resize(selectOutInStrL.size());
+
+  // open input file stream and read seletive firm
+  for (int i = 0; i < selectOutInStrL.size(); i++) {
+
+    string s = selectOutInStrL[i];
+
+    ifstream ifs(s);
+    if (!ifs) {
+      cerr << "unable to open " << s << " as selective output's input file" << endl;
+    }
+    while (!ifs.eof()) {
+      std::string sfirm;
+      ifs >> sfirm;
+      if (sfirm.empty()) continue;
+      if (firm_index.find(sfirm) == firm_index.end()) { continue; }
+      int firm = firm_index.at(sfirm);
+
+      //      selectedIDH[firm]=1;
+
+      selectiveOutputLoH[i][firm] = 1;
+    }
+
+    //    selectiveOutputLoH.push_back(selectedIDH);
+  }
+}
+
+void ReadPredefinedDeltaFile(const std::string &predefinedDeltaFile, const firm_index_t &firm_index) {
+
+  if (predefinedDeltaFile.size() > 0) {
+
+
+    // input
+    ifstream pdIfs;
+    pdIfs.open(predefinedDeltaFile);
+    if (!pdIfs) {
+      throw std::runtime_error("unable to open predefinedDeltaFile");
+    }
+    // deploy predefined input
+    string str;
+    while (getline(pdIfs, str)) {
+      string tmp;
+      istringstream stream(str);
+      vector<string> result;
+      while (getline(stream, tmp, ' ')) {
+        result.push_back(tmp);
+      }
+      if (result.size() != 4) {
+        throw std::runtime_error("illegal format in PredefinedDeltaFile");
+      }
+
+      if (firm_index.find(result[0]) == firm_index.end()) { continue; }
+      
+      int id = firm_index.at(result[0]);
+      double delta = atof(result[1].c_str());
+      int sdate = atoi(result[2].c_str());
+      int edate = atoi(result[3].c_str());
+
+      // debug
+      //      cerr << id << " " << delta << " " << sdate << " " << edate << endl;
+
+      if (predefinedHoL.find(id) == predefinedHoL.end()) {
+        predefinedHoL[id].clear();
+      }
+      
+      predefinedHoL[id].emplace_back(sdate,edate,delta);
+      
+    }
+  }
+
+  
+}
+
+int main(int argc, char *argv[]) {
+
+  // rand seed
+  int simulationStep = 10;
+  int randSeed = 331;
 
   time_t btime;
   time_t etime;
@@ -2719,538 +1900,338 @@ int main(int argc, char *argv[]){
   time(&btime);
 
   // options
-  int		ch;
-  extern char	*optarg;
-  extern int	optind, opterr;
+  int ch;
+  extern char *optarg;
+  extern int optind, opterr;
 
-  char* proName=argv[0];
+  char *proName = argv[0];
   // minimum input files
-  int argNum=5; 
+  int argNum = 4;
+  std::string pValueAddedOutputFile = "VA.txt";
+  std::string pactOutputFile = "PAct.txt";
+  std::string deltaFile;  // [optional] delta vector
+  std::string finalConsumeOutputFile;
+  std::string statsOutputFile;
+  std::string directLossOutputFile;
+  std::string sPredefinedDeltaFile;
 
-  while ((ch = getopt(argc, argv, "r:t:d:D:f:s:o:p:a:FR:v:A:")) != -1){
-    switch (ch){
-    case 'r':
-      randSeed=atoi(optarg);
-      break;
-    case 't':
-      simulationStep=atoi(optarg);
-      break;
-    case 'd':
-      deltaFile=optarg;
-      break;
-    case 'D':
-      iInvDistType=atoi(optarg);
-      break;
-    case 'f':
-      finalConsumeOutputFile=optarg;
-      break;
-    case 'o':
-      iOrderTypeFrag=atoi(optarg);
-      break;
-    case 's':
-     statsOutputFile=optarg;
-      break;
-    case 'a':
-      iAdapType=atoi(optarg);
-      break;
-    case 'F':
-      iFullDebugFrag=1;
-      break;
-    case 'R':
-      iRationingTypeFrag=atoi(optarg);
-      break;
-    case 'p':
-      iPrintSnapFrag=1;
-      sPrintSnapStep=optarg;
-      break;
-    case 'v':
-      pValueAddedOutputFile=optarg;
-      break;
-    case 'A':
-      adaptationOutputFile=optarg;
-      break;
-    default:
-      usage(proName);
+  while ((ch = getopt(argc, argv, "b:c:d:D:e:f:Fi:mM:o:O:p:P:r:R:s:S:t:T:uv:x:X:z:Z:")) != -1) {
+    switch (ch) {
+      case 'b':iRecoveryType = atoi(optarg);
+        break;
+      case 'c':iRecoveryDay = atoi(optarg);
+        break;
+      case 'd':deltaFile = optarg;
+	iDeltaFile=1;
+        break;
+      case 'D':iInvDistType = atoi(optarg);
+        break;
+      case 'e':iInventoryMin = atoi(optarg);
+        break;
+      case 'f':finalConsumeOutputFile = optarg;
+        break;
+      case 'F':iFullDebugFlag = 1;
+        break;
+      case 'r':randSeed = atoi(optarg);
+        break;
+      case 't':simulationStep = atoi(optarg);
+        break;
+      case 'i':inventoryN = atoi(optarg);
+        break;
+      case 'm':iMuteFlag = 1;
+        break;
+      case 'M':iDailyCVector = 1;
+        sDailyCVectorFile = optarg;
+        break;
+      case 'o':iOrderTypeFlag = atoi(optarg);
+        break;
+      case 'p':iPrintSnapFlag = 1;
+        sPrintSnapStep = optarg;
+        break;
+      case 'R':iRationingTypeFlag = atoi(optarg);
+        break;
+      case 's':statsOutputFile = optarg;
+        break;
+      case 'S':iForceStopDay = atoi(optarg);
+        break;
+      case 'T':tau = atoi(optarg);
+        break;
+      case 'u':iPActSupFlag = 1;
+        break;
+      case 'v':pValueAddedOutputFile = optarg;
+        break;
+      case 'x':directLossOutputFile = optarg;
+        break;
+      case 'X':pactOutputFile = optarg;
+        break;
+      case 'z':iSelectiveOutput = 1;
+        sSelectiveOutput = optarg;
+        break;
+      case 'Z':sPredefinedDeltaFile = optarg;
+	iPredefinedDeltaFile=1;
+        break;
+      default:usage(proName);
     }
   }
   argc -= optind;
   argv += optind;
-  
+
+  if (iRecoveryType != -1) {
+    if (!(iRecoveryDay > 0)) {
+      cerr << "-b should be used with -c (Positive)" << endl;
+      exit(1);
+    }
+  }
+
   // initialize random
-
-  // debug
-  //  cerr << "randSeed " << randSeed << endl;
-
   srand(randSeed);
 
-  // debug
-  //  cerr << "argc " << argc << endl;
-
   // argc
-  if(argc!=argNum){
+  if (argc != argNum) {
+    cerr << "Invalid arg num" << endl;
     usage(proName);
     return 1;
   }
 
-  // ioLineFile
-  char *ioLineFile=argv[argc-5];
-  ifstream ifs(ioLineFile);
+  const std::string ATableFile = argv[argc - 4];
+  const std::string cVectorFile = argv[argc - 3];
+  const std::string piniVectorFile = argv[argc - 2];
+  const std::string firmAffiFile = argv[argc - 1];
 
-  if(!ifs){
-    if(argc>=argNum){
-      cerr << "Unable to open " << ioLineFile << " as aTableLineFile" << endl;
-    }else{
-      usage(proName);
-    }
-    return 1;
-  }
+  std::ofstream pactOfs;  // output stream for Pactual
+  std::ofstream pvalueOfs;  // output stream for Pvalue
+  std::ofstream fcOfs; // output stream for final consumer
+  std::ofstream statsOfs;
+  std::ofstream dlossOfs;  // output stream for direct loss
+  std::ofstream debugOfs;
 
-  // debug
-  //  cerr << "ioLineFile " << ioLineFile << endl;
+  std::vector<string> selectOutInStrL;
+  std::vector<std::ofstream> selectOutPActL;
+  std::vector<std::ofstream> selectOutVAL;
 
-  // cVectorFile
-
-  char *cVectorFile=argv[argc-4];
-  ifstream ifs2(cVectorFile);
-  if(!ifs2){
-    if(argc>=argNum){
-      cerr << "Unable to open " << cVectorFile << " as cVectorFile" << endl;
-    }else{
-      usage(proName);
-    }
-    return 1;
-  }
-
-  // debug
-  //  cerr << "cVectorFile " << cVectorFile << endl;
-
-  // piniVectorFile
-
-  char *piniVectorFile=argv[argc-3];
-  ifstream ifs3(piniVectorFile);
-  if(!ifs3){
-    if(argc>=argNum){
-      cerr << "Unable to open " << piniVectorFile << " as piniVectorFile" << endl;
-    }else{
-      usage(proName);
-    }
-    return 1;
-  }
-
-  // debug
-  //  cerr << "piniVectorFile " << piniVectorFile << endl;
-
-  // firmAffiFile
-
-  char *firmAffiFile=argv[argc-2];
-  ifstream ifs4(firmAffiFile);
-  if(!ifs4){
-    if(argc>=argNum){
-      cerr << "Unable to open " << firmAffiFile << " as firmAffiFile" << endl;
-    }else{
-      usage(proName);
-    }
-    return 1;
-  }
-
-  //deltafile
-  if(deltaFile.size()>0){
-    ifsDelta.open(deltaFile.c_str());
-    if(!ifsDelta){
-      if(argc>=argNum){
-	cerr << "Unable to open " << deltaFile << " as deltaFile" << endl;
-      }else{
-	usage(proName);
-      }
-      return 1;
-    }
-  }
-
-  // pactOutputFile
-
-  char *pactOutputFile=argv[argc-1];
-  ofs.open(pactOutputFile);
-  if(!ofs){
-
-    // debug
-    cerr << "argc: " << argc << endl;
-    cerr << "argNum: " << argNum << endl;
-    
-    if(argc>=argNum){
-      cerr << "Unable to open " << pactOutputFile << " as pactOutputFile" << endl;
-    }else{
-      usage(proName);
-    }
-    return 1;
-  }
-
-  // pvalueAddedFile
-  if(pValueAddedOutputFile.size()>0){
-    pvfs.open(pValueAddedOutputFile.c_str());
-    if(!pvfs){
-      if(argc>=argNum){
-	cerr << "Unable to open " << pValueAddedOutputFile << " as pValueAddedFile" << endl;
-      }else{
-	usage(proName);
-      }
-      return 1;
-    }
-  }
-
-  // adaptationOutputFile
-  if(adaptationOutputFile.size()>0){
-    adapOfs.open(adaptationOutputFile.c_str());
-    if(!adapOfs){
-      if(argc>=argNum){
-	cerr << "Unable to open " << adaptationOutputFile << " as adaptationOutputFile" << endl;
-      }else{
-	usage(proName);
-      }
-      return 1;
-    }
-  }
-
-  // get snapshot info
-  if(iPrintSnapFrag){
+  // get selective output file
+  if (iSelectiveOutput == 1) {
 
     vector<string> vS;
-    vS=split(sPrintSnapStep, ':');
+    vS = split(sSelectiveOutput, ':');
 
-    if(vS.size()<=1){
+    if (vS.size() < 1) {
+      cerr << "Invalid arg for option z (should be file:file...)" << endl;
+      usage(proName);
+      exit(1);
+    }
+
+    for (auto itr = vS.begin(); itr != vS.end(); itr++) {
+      selectOutInStrL.push_back(*itr);
+    }
+
+  }
+
+  OpenOutputStreams(pactOutputFile,
+                    pValueAddedOutputFile,
+                    finalConsumeOutputFile,
+                    statsOutputFile,
+                    directLossOutputFile,
+                    selectOutInStrL,
+                    pactOfs,
+                    pvalueOfs,
+                    fcOfs,
+                    statsOfs,
+                    dlossOfs,
+                    selectOutPActL,
+                    selectOutVAL
+  );
+
+
+  // get snapshot info
+  if (iPrintSnapFlag) {
+    vector<string> vS;
+    vS = split(sPrintSnapStep, ':');
+    if (vS.size() <= 1) {
       cerr << "Invalid arg for option p (should be file:step:...)" << endl;
       usage(proName);
-      return(1);
+      return (1);
     }
-
-    sPrintSnapFileBase=vS[0];
-
+    sPrintSnapFileBase = vS[0];
     auto itr = vS.begin();
     itr++;
-    for(; itr != vS.end(); ++itr) {
-      hPrintSnapStep[atoi((*itr).c_str())]=1;
+    for (; itr != vS.end(); ++itr) {
+      hPrintSnapStep[atoi((*itr).c_str())] = 1;
     }
-
   }
 
-  // debug
-  //  cout << "sPrintSnapFileBase is " << sPrintSnapFileBase << endl;
-  //  printHash1LayerIntInt("hPrintSnapStep", &hPrintSnapStep);
-  //  return(1);
-
-  // debug
-  // output firms with damage
-  // count the number
-//   damageFS.open(damagedFirmFile);
-//   if(!damageFS){
-//     cerr << "Unable to open" << endl;
-//     return 1;
-//   }
-
-// debug
-// fulldebug
-
-  if(iFullDebugFrag){
-    debugFS.open(fullDebugFile.c_str());
-    if(!debugFS){
-      cerr << "Unable to open" << endl;
-      return 1;
+  // recvoery day should be greater than 0
+  if (iRecoveryDay < 0) {
+    cerr << "recovery day should be greater than 0" << endl;
+    return (1);
+  }
+  if (iFullDebugFlag) {
+    debugOfs.open("FullDebugLog.csv");
+    if (!debugOfs) {
+      throw std::runtime_error("cannot open FullDebug file");
     }
-    debugFS << "t, i, pini, delta, pcap, d, pmax, pact, dadjusted, s..., o..., " << endl;
+    debugOfs << "t, i, pini, delta, pcap, d, pmax, pact, dadjusted, s..., o..., " << endl;
   }
-
-  // debug
-  //  cerr << "ioLineFile " << ioLineFile << endl;
-
-  // read ATableLine
-  // column: 0, 1, 2 means
-  // 0: supplier, 1: client, 2: volume
-  // however, hallegatte paper says
-  // row client - product -> column supplierなので
-  // forward should be initialized by 1, 0, 2
-  // backward should be initialized by 0, 1, 2
-
-  string str;
-  while(getline(ifs,str)){
-    string tmp;
-    istringstream stream(str);
-    vector<string> result;
-    while(getline(stream,tmp,' ')){
-
-      // debug
-      //	  cout<< tmp << endl;
-
-      result.push_back(tmp);
-    }
-
-    if(result[2].c_str()<=0){
-      continue;
-    }
-
-    // does source exists in hash?
-    unordered_map<int, unordered_map<int, double> >::iterator findI;
-
-    findI = fATableHoH.find (atoi(result[1].c_str()));
-    if(findI == fATableHoH.end()){
-      // no
-
-      // debug
-      //      cout << "not found" <<endl;
-
-      unordered_map<int, double> fATableH;
-      fATableHoH[atoi(result[1].c_str())]=fATableH;
-
-    }else{
-      // yes
-
-      // debug
-      //     cout << "found" << endl;
-
-    }
-
-    (fATableHoH[atoi(result[1].c_str())])[atoi(result[0].c_str())]=atof(result[2].c_str());
-
-    // opposite
-    findI = bATableHoH.find (atoi(result[0].c_str()));
-    if(findI == bATableHoH.end()){
-      // no
-
-      // debug
-      //      cout << "not found" <<endl;
-
-      unordered_map<int, double> bATableH;
-      bATableHoH[atoi(result[0].c_str())]=bATableH;
-
-    }else{
-      // yes
-
-      // debug
-      //     cout << "found" << endl;
-
-    }
-
-    (bATableHoH[atoi(result[0].c_str())])[atoi(result[1].c_str())]=atof(result[2].c_str());
-
-    // debug
-//     if(isnan((bATableHoH[atoi(result[0].c_str())])[atoi(result[1].c_str())])){
-//       cerr << atoi(result[0].c_str()) << " " << atoi(result[1].c_str()) << endl;
-//       exit(1);
-//     }
-
-    // for check
-    firmH[atoi(result[0].c_str())]=1;
-    firmH[atoi(result[1].c_str())]=1;
-
-  }
-
-  if(fATableHoH.size()==0){
-    cerr << "ATableLineFile is empty" << endl;
-  }
-
-  if(bATableHoH.size()==0){
-    cerr << "ATableLineFile is empty" << endl;
-  }
-
-  // input cVector
-
-  // initialize with 0
-  unordered_map<int, int> *hashII;
-  hashII=&firmH;
-    
-  for(auto itr = hashII->begin(); itr != hashII->end(); ++itr) {
-    cVectorH[itr->first]=0;
-  }
-
-  while(getline(ifs2,str)){
-    string tmp;
-    istringstream stream(str);
-    vector<string> result;
-    while(getline(stream,tmp,' ')){
-
-      // debug
-      //	  cout<< tmp << endl;
-
-      result.push_back(tmp);
-    }
-
-    // does source exists in hash?
-    unordered_map<int, int>::iterator findI;
-
-    findI = firmH.find (atoi(result[0].c_str()));
-    if(findI == firmH.end()){
-      // no
-      // do not record it
-      // cerr << "There is a firm C vector " << atoi(result[0].c_str()) << " without element in A table" << endl;
-
-    }else{
-      // yes
-      // record it
-      cVectorH[atoi(result[0].c_str())]=atof(result[1].c_str());
-    }
-
-  }
-
-  if(cVectorH.size()==0){
-    cerr << "cVectorFile is empty" << endl;
-  }
-
-  // input piniVector
-
-  // initialize with 0
-  hashII=&firmH;
-    
-  for(auto itr = hashII->begin(); itr != hashII->end(); ++itr) {
-    piniVectorH[itr->first]=0;
-    piniInputVectorH[itr->first]=0;
-  }
-
-  while(getline(ifs3,str)){
-    string tmp;
-    istringstream stream(str);
-    vector<string> result;
-    while(getline(stream,tmp,' ')){
-
-      // debug
-      //	  cout<< tmp << endl;
-
-      result.push_back(tmp);
-    }
-
-    // does source exists in hash?
-    unordered_map<int, int>::iterator findI;
-
-    findI = firmH.find (atoi(result[0].c_str()));
-    if(findI == firmH.end()){
-      // no
-      //      cerr << "There is a firm  of Pini " << atoi(result[0].c_str()) << " vector without element in A table" << endl;;
-      // do not record it
-
-    }else{
-      // yes
-      // record it
-      piniVectorH[atoi(result[0].c_str())]=atof(result[1].c_str());
-
-    }
-
-  }
-
-  if(piniVectorH.size()==0){
-    cerr << "piniVectorFile is empty" << endl;
-  }
-
 
   // read firm affiliation
+  stringstream ss;
 
-  while(getline(ifs4,str)){
-    string tmp;
-    istringstream stream(str);
-    vector<string> result;
-    while(getline(stream,tmp,' ')){
+  ss.str("");
+  ss.clear(stringstream::goodbit);
+  ss << "reading firmAffiliation. File: " << firmAffiFile << std::endl;
+  firm_index_t firm_index;
+  muteSwitchedCerr(ss.str());
+  MeasureElapsed("read firmAffiliation", [&] {
+    firm_index = ReadFirmAffiliationFile(firmAffiFile);
+  });
 
-      // debug
-      //	  cout<< tmp << endl;
+  // read ATable
+  ss.str("");
+  ss << "reading ATableLine. File: " << ATableFile << std::endl;
+  muteSwitchedCerr(ss.str());
+  MeasureElapsed("read ATableLine", [&] {
+    ReadAtable(ATableFile, firm_index);
+  });
 
-      result.push_back(tmp);
+  // read cVector
+  ss.str("");
+  ss.clear(stringstream::goodbit);
+  ss << "reading cVector. File: " << cVectorFile << std::endl;
+  muteSwitchedCerr(ss.str());
+  MeasureElapsed("read cVector", [&] {
+    ReadCVector(cVectorFile, firm_index);
+  });
+
+  // read pini
+  ss.str("");
+  ss.clear(stringstream::goodbit);
+  ss << "reading Pini. File: " << piniVectorFile << std::endl;
+  muteSwitchedCerr(ss.str());
+  MeasureElapsed("read PiniVector", [&] {
+    ReadPiniVector(piniVectorFile, firm_index);
+  });
+  
+  // read selective output file
+  if (iSelectiveOutput == 1) {
+    ss.str("");
+    ss.clear(stringstream::goodbit);
+    ss << "reading Selective Output Files" << std::endl;
+    muteSwitchedCerr(ss.str());
+    ReadSelectiveOutputFile(selectOutInStrL, firm_index);
+  }
+
+  // get predefined delta table
+  ss.str("");
+  ss.clear(stringstream::goodbit);
+  ss << "reading PredefinedDelta" << std::endl;
+  muteSwitchedCerr(ss.str());
+  ReadPredefinedDeltaFile(sPredefinedDeltaFile, firm_index);
+
+
+  //deltafile
+  if (!deltaFile.empty()) {
+    std::ifstream ifsDelta(deltaFile);
+    if (!ifsDelta) { throw std::runtime_error("failed to open deltaFile"); }
+    string str;
+    while (getline(ifsDelta,str)){
+      std::vector<std::string> result; 
+      std::istringstream iss(str); 
+      for(std::string s; iss >> s; ){
+	result.push_back(s);
+      }
+
+      if (result.empty()) continue;
+      
+      std::string x0=result[0];
+      double x1=std::stod(result[1]);
+      int x2=0;
+
+      // allow column 3 is empty, which means start at 0
+      if(result.size()==2){
+      }else{
+	x2=std::stoi(result[2]);
+      }
+
+      auto found = firm_index.find(x0);
+      if (found != firm_index.end()) {
+        const int x0 = found->second;
+        DeltaReserveVectorH[x0] = x1;
+	DeltaStartVectorH[x0] = x2;
+
+
+      }
+
+      
+    }
+  }
+
+  // daily CVector
+  if (iDailyCVector == 1) {
+
+    vector<string> vS;
+    vS = split(sDailyCVectorFile, ':');
+
+    if (vS.size() < 1) {
+      cerr << "Invalid arg for option M (should be file:day...)" << endl;
+      usage(proName);
+      exit(1);
     }
 
-    // does source exists in hash?
-    //    unordered_map<int, double>::iterator findI;
+    auto itr = vS.begin();
+    sDailyCVectorFileBase=*itr;
 
-    int firm=atoi(result[0].c_str());
-    int sector=atoi(result[1].c_str());
-    firmAffiH[firm]=sector;
-    
-    unordered_map<int, vector<int> >::iterator findI;
-
-    findI = secFirmHoL.find (sector);
-    if(findI == secFirmHoL.end()){
-      // no
-      vector<int> v;
-      secFirmHoL[sector]=v;
-
-    }else{
-      // yes
-
-      // debug
-      //     cout << "found" << endl;
-
+    for (auto itr = vS.begin()+1; itr != vS.end(); itr++) {
+      dailyCVectorDayH[atoi((*itr).c_str())]=1;
     }
-
-    secFirmHoL[sector].push_back(firm);
 
   }
 
-  // debug
-  //  printHashVectorIntInt("secFirmHoL", &secFirmHoL);
+  // check consistency of options
 
+  if((iPredefinedDeltaFile == 1) && ((iRecoveryType != -1) || (iRecoveryDay != 0) || (iDeltaFile==1))){
+      cerr << "Illegal option: -Z and (-b or -c or -d) cannot be used at the same time" << endl;
+      exit(1);
+  }
 
-  // inputfile check start
-
-  // debug
-  //  printHash2LayerIntIntDouble("fATableHoH", &fATableHoH);
-
-  // debug
-  //  printHash2LayerIntIntDouble("bATableHoH", &bATableHoH);
-
-  // debug
-  //  printHash1LayerIntDouble("piniVectorH", &piniVectorH);
-
-
-  // debug
-  //  printHash1LayerIntDouble("cVectorH", &cVectorH);
-
-  // debug
-  //  printHash1LayerIntInt("firmAffiH", &firmAffiH);
-
-  // inputfile check end
-
-  // initialize model
-
-  initializeModel();
+  
+  // set cvec org
+  cVectorOrgH=cVectorH;
+  
+  ss.str("");
+  ss.clear(stringstream::goodbit);
+  ss << "initialize model" << std::endl;
+  muteSwitchedCerr(ss.str());
+  MeasureElapsed("initializeModel", [&] {
+    initializeModel(randSeed, pactOfs, pvalueOfs, fcOfs, statsOfs, selectOutPActL, selectOutVAL);
+  });
 
   // hazard t=0
-  hazard();
-
-  if(iFullDebugFrag){
-    fullDebug(-1);
+  hazard(deltaFile, statsOfs);
+  
+  if (iFullDebugFlag) {
+    fullDebug(-1, debugOfs);
   }
-
-  // debug
-  //  printAllInternal();
-
+  
   // simulation
-  simulation();
-
-  // if output at last
-//   unordered_map<int, double> *hashO;
-//   hashO=&PactualVectorH;
-//   map<int, int> sortedVectorH(hashO->begin(), hashO->end());
-//   for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-//     // show keys values
-//     // i, actual P
-//     ofs << itr->first << " " << itr->second << endl;
-//   }
-
-  // debug pini pact ratio
-//   piniPactRatioFS.open(piniPactRatioFile);
-//   if(!piniPactRatioFS){
-//     cerr << "Unable to open" << endl;
-//     return 1;
-//   }
-//   unordered_map<int, double> *hashD;
-//   hashD=&PactualVectorH;
-//   map<int, int> sortedVectorH(hashD->begin(), hashD->end());
-//   for(auto itr = sortedVectorH.begin(); itr != sortedVectorH.end(); ++itr) {
-//     // show keys values
-//     // i, pini, pact, ratio
-//     piniPactRatioFS << itr->first << " " << piniVectorH[itr->first] << " " << PactualVectorH[itr->first] << " " << (PactualVectorH[itr->first]/piniVectorH[itr->first]) << endl;
-//   }
-
+  MeasureElapsed("simulation", [&] {
+    simulation(simulationStep,
+               pactOfs,
+               pvalueOfs,
+               fcOfs,
+               statsOfs,
+               dlossOfs,
+               debugOfs,
+               selectOutPActL,
+               selectOutVAL,
+	       firm_index);
+  });
 
   // end time
   time(&etime);
-  int diffTime=difftime(etime, btime);
-  printf("%d sec. elapsed\n",diffTime);
+  int diffTime = difftime(etime, btime);
 
+  if (!iMuteFlag) {
+    printf("%d sec. elapsed\n", diffTime);
+  }
   return 0;
-
 }
